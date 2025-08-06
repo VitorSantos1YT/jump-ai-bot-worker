@@ -1,5 +1,5 @@
-// Importa o cliente do Supabase diretamente de um CDN.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// MUDANÇA AQUI: Trocamos o provedor do módulo para skypack.dev
+import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js';
 
 export default {
   async fetch(request, env) {
@@ -37,7 +37,7 @@ export default {
           .eq('telegram_id', userId)
           .single();
 
-        if (error && error.code !== 'PGRST116') { // Ignora o erro "nenhuma linha encontrada"
+        if (error && error.code !== 'PGRST116') {
             console.error("Erro no Supabase:", error);
             await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Desculpe, estou com problemas na minha memória (Supabase).");
             return new Response('OK');
@@ -51,8 +51,7 @@ export default {
         await this.sendChatAction(env.TELEGRAM_BOT_TOKEN, chatId, 'typing');
         
         // 2. INTERPRETAR O COMANDO
-        // (Simplifiquei o nome do repositório para ser lido do ambiente)
-        const GITHUB_REPO = env.GITHUB_REPO_URL; // Ex: "VitorSantos1YT/jump-ai-bot-worker"
+        const GITHUB_REPO = env.GITHUB_REPO_URL;
 
         if (text.toLowerCase().startsWith('ler arquivo')) {
             const filePath = text.substring(12).trim();
