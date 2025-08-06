@@ -1,34 +1,28 @@
-import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js';
+// ARQUITETURA FINAL E DEFINITIVA - SEM DEPENDÊNCIAS E À PROVA DE TIMEOUTS
 
 export default {
-  // ADICIONAMOS O 'ctx' AQUI
   async fetch(request, env, ctx) {
-    this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-    
     const url = new URL(request.url);
     if (url.pathname === '/telegram-webhook') {
-      // E PASSAMOS O 'ctx' PARA A FUNÇÃO PRINCIPAL
       return this.handleTelegramWebhook(request, env, ctx);
     }
     if (url.pathname === '/setup') {
       return this.setupWebhook(request, env);
     }
-    return new Response('Assistente de IA está online. Cérebro principal conectado e otimizado.');
+    return new Response('Assistente de IA está online. Arquitetura final implementada.');
   },
 
-  // ADICIONAMOS O 'ctx' AQUI
   async handleTelegramWebhook(request, env, ctx) {
     if (request.method !== 'POST') {
       return new Response('Método não permitido', { status: 405 });
     }
-    
     try {
       const payload = await request.json();
       if (payload.message) {
-        // A LÓGICA DE PROCESSAMENTO AGORA É ENVIADA PARA SEGUNDO PLANO
+        // Envia o processamento da mensagem para segundo plano para evitar timeouts
         ctx.waitUntil(this.processMessage(payload.message, env));
       }
-      // RESPONDEMOS 'OK' IMEDIATAMENTE PARA O TELEGRAM NÃO ESPERAR
+      // Responde OK imediatamente para o Telegram
       return new Response('OK');
     } catch (e) {
       console.error(e.stack);
@@ -36,9 +30,6 @@ export default {
     }
   },
   
-  /**
-   * NOVO: Função que processa a mensagem em segundo plano
-   */
   async processMessage(message, env) {
     const chatId = message.chat.id;
     const userId = message.from.id;
@@ -46,18 +37,12 @@ export default {
 
     console.log(`Mensagem de ${userId}: ${text}`);
 
-    const { data: client, error } = await this.supabase
-      .from('clients')
-      .select('*')
-      .eq('telegram_id', userId)
-      .single();
+    const client = await this.getSupabaseUser(env, userId);
 
-    if (error && error.code !== 'PGRST116') {
-        console.error("Erro no Supabase:", error);
+    if (client.error) {
         return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Desculpe, estou com problemas na minha memória (Supabase).");
     }
-
-    if (!client) {
+    if (!client.data) {
         return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `Acesso negado. Seu ID (${userId}) não está registrado no meu sistema.`);
     }
 
@@ -75,7 +60,27 @@ export default {
     }
   },
 
-  // O resto do código (getGithubFileContent, runGroq, etc.) permanece o mesmo
+  async getSupabaseUser(env, userId) {
+    const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
+    try {
+        const response = await fetch(supabaseUrl, {
+            headers: {
+                'apikey': env.SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+            }
+        });
+        if (!response.ok) {
+            console.error("Erro no Supabase:", await response.text());
+            return { data: null, error: true };
+        }
+        const data = await response.json();
+        return { data: data.length > 0 ? data[0] : null, error: false };
+    } catch (e) {
+        console.error("Erro ao conectar com Supabase:", e);
+        return { data: null, error: true };
+    }
+  },
+
   async getGithubFileContent(env, repo, filePath) {
     const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
     try {
@@ -88,9 +93,10 @@ export default {
       return `Conteúdo do arquivo '${filePath}':\n\n${content.substring(0, 1000)}...`;
     } catch (e) { return "Ocorreu um erro ao tentar ler o GitHub."; }
   },
+
   async runGroq(apiKey, userInput) {
       const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
-      const systemPrompt = "Você é Jump.ai, o cérebro de um sistema de IA que edita sites. O usuário é um cliente autenticado. Seja prestativo e direto.";
+      const systemPrompt = "Você é Jump.ai. Responda de forma concisa e útil.";
       const response = await fetch(groqUrl, { 
           method: 'POST',
           headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -103,6 +109,7 @@ export default {
       const data = await response.json();
       return data.choices[0].message.content;
   },
+  
   async sendMessage(token, chatId, text) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }), });
