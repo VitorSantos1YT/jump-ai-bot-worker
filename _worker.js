@@ -9,7 +9,6 @@ export default {
       return this.setupWebhook(request, env);
     }
     
-    // Esta é a linha que estava com erro, agora corrigida.
     return new Response('Assistente de IA está online e operando.');
   },
 
@@ -25,9 +24,9 @@ export default {
         const userId = message.from.id;
         const text = message.text || '(Mensagem não textual recebida)';
 
-        console.log();
+        console.log(`Mensagem de ${userId}: ${text}`);
 
-        const responseText = ;
+        const responseText = `Recebido! Seu ID é ${userId}. Sua mensagem foi: "${text}". A fundação está funcionando. Chave do Groq carregada: ${env.GROQ_API_KEY ? 'Sim' : 'Não'}. Banco de dados conectado: ${env.SUPABASE_URL ? 'Sim' : 'Não'}.`;
         
         await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, responseText);
       }
@@ -39,7 +38,7 @@ export default {
   },
 
   async sendMessage(token, chatId, text) {
-    const url = ;
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,13 +47,13 @@ export default {
   },
 
   async setupWebhook(request, env) {
-    const workerUrl = ;
-    const webhookUrl = ;
-    const telegramApiUrl = ;
+    const workerUrl = `https://${new URL(request.url).hostname}`;
+    const webhookUrl = `${workerUrl}/telegram-webhook`;
+    const telegramApiUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
     
     const response = await fetch(telegramApiUrl);
     const result = await response.json();
 
-    return new Response();
+    return new Response(`Webhook configurado para: ${webhookUrl}\n\nResposta do Telegram: ${JSON.stringify(result)}`);
   }
 };
