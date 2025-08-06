@@ -1,11 +1,8 @@
-// MUDANÇA AQUI: Trocamos o provedor do módulo para skypack.dev
-import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js';
+// ARQUITETURA FINAL - SEM DEPENDÊNCIAS EXTERNAS
 
 export default {
   async fetch(request, env) {
-    // Inicializa o cliente do Supabase uma única vez para cada requisição
-    this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-    
+    // Não precisamos mais inicializar o cliente do Supabase aqui.
     const url = new URL(request.url);
     if (url.pathname === '/telegram-webhook') {
       return this.handleTelegramWebhook(request, env);
@@ -13,7 +10,7 @@ export default {
     if (url.pathname === '/setup') {
       return this.setupWebhook(request, env);
     }
-    return new Response('Assistente de IA está online. Memória e Braços conectados.');
+    return new Response('Assistente de IA está online. Arquitetura sem dependências.');
   },
 
   async handleTelegramWebhook(request, env) {
@@ -30,20 +27,15 @@ export default {
 
         console.log(`Mensagem de ${userId}: ${text}`);
         
-        // 1. VERIFICAR A IDENTIDADE DO USUÁRIO
-        const { data: client, error } = await this.supabase
-          .from('clients')
-          .select('*')
-          .eq('telegram_id', userId)
-          .single();
+        // 1. VERIFICAR A IDENTIDADE DO USUÁRIO USANDO FETCH
+        const client = await this.getSupabaseUser(env, userId);
 
-        if (error && error.code !== 'PGRST116') {
-            console.error("Erro no Supabase:", error);
+        if (client.error) {
             await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Desculpe, estou com problemas na minha memória (Supabase).");
             return new Response('OK');
         }
 
-        if (!client) {
+        if (!client.data) {
             await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `Acesso negado. Seu ID (${userId}) não está registrado no meu sistema.`);
             return new Response('OK');
         }
@@ -68,32 +60,50 @@ export default {
       return new Response('Erro interno do worker', { status: 500 });
     }
   },
+  
+  /**
+   * NOVO: Busca o usuário no Supabase usando fetch nativo
+   */
+  async getSupabaseUser(env, userId) {
+    const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
+    try {
+        const response = await fetch(supabaseUrl, {
+            headers: {
+                'apikey': env.SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+            }
+        });
+        if (!response.ok) {
+            console.error("Erro no Supabase:", await response.text());
+            return { data: null, error: true };
+        }
+        const data = await response.json();
+        // Se a resposta for um array vazio, o usuário não existe.
+        return { data: data.length > 0 ? data[0] : null, error: false };
+    } catch (e) {
+        console.error("Erro ao conectar com Supabase:", e);
+        return { data: null, error: true };
+    }
+  },
 
   async getGithubFileContent(env, repo, filePath) {
     const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+    // ... (esta função e as outras abaixo permanecem iguais)
     try {
       const response = await fetch(githubUrl, {
-        headers: {
-          'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-          'User-Agent': 'JumpAI-Bot',
-          'Accept': 'application/vnd.github.v3+json'
-        }
+        headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot', 'Accept': 'application/vnd.github.v3+json' }
       });
-      if (!response.ok) {
-        return `Não consegui ler o arquivo '${filePath}'. Status: ${response.status}. Verifique se o nome do repositório e do arquivo estão corretos.`;
-      }
+      if (!response.ok) return `Não consegui ler o arquivo '${filePath}'. Status: ${response.status}.`;
       const data = await response.json();
       const content = atob(data.content);
-      return `Conteúdo do arquivo '${filePath}':\n\n${content.substring(0, 1000)}... (mostrando os primeiros 1000 caracteres)`;
-    } catch (e) {
-      console.error("Erro ao ler arquivo do GitHub:", e);
-      return "Ocorreu um erro ao tentar usar meus 'braços' para ler o GitHub.";
-    }
+      return `Conteúdo do arquivo '${filePath}':\n\n${content.substring(0, 1000)}...`;
+    } catch (e) { return "Ocorreu um erro ao tentar ler o GitHub."; }
   },
 
   async runGroq(apiKey, userInput) {
       const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
       const systemPrompt = "Você é Jump.ai, o cérebro de um sistema de IA que edita sites. O usuário com quem você está falando é um cliente autenticado. Seja prestativo e direto.";
+      // ... (código do Groq permanece igual)
       const response = await fetch(groqUrl, { 
           method: 'POST',
           headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -108,11 +118,7 @@ export default {
   },
   
   async sendMessage(token, chatId, text) {
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }), });
-  },
-  async sendChatAction(token, chatId, action) {
-    const url = `https://api.telegram.org/bot${token}/sendChatAction`;
+    const url = `https:/api.telegram.org/bot${token}/sendChatAction`;
     await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, action: action }), });
   },
   async setupWebhook(request, env) {
