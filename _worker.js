@@ -2,7 +2,6 @@
 
 export default {
   async fetch(request, env, ctx) {
-    // ... (código existente)
     try {
       this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
       const url = new URL(request.url);
@@ -13,7 +12,7 @@ export default {
         return this.setupWebhook(request, env);
       }
       const branchName = this.getBranchFromHost(url.hostname, env) || 'master';
-      const path = url.pathname === '/' ? '/teste.html' : url.pathname; 
+      const path = url.pathname === '/' ? '/teste.html' : url.pathname;
       return this.serveGithubFile(env, env.GITHUB_REPO_URL, path, branchName);
     } catch (e) {
       console.error(e);
@@ -21,8 +20,7 @@ export default {
     }
   },
 
-  async handleTelegramWebhook(request, env, ctx) {
-    // ... (código existente)
+  handleTelegramWebhook(request, env, ctx) {
     if (request.method !== 'POST') return new Response('Método não permitido', { status: 405 });
     try {
       const payload = await request.json();
@@ -37,7 +35,6 @@ export default {
   },
   
   async processMessage(message, env) {
-    // ... (código existente)
     const chatId = message.chat.id;
     const userId = message.from.id.toString();
     const text = message.text || '(Mensagem não textual)';
@@ -71,16 +68,14 @@ export default {
     if (!mainBranchSha) return "❌ Não consegui encontrar a branch principal do projeto.";
     const originalFile = await this.getGithubFileContent(env, repo, filePath, true, 'master');
     if (originalFile.error) return originalFile.message;
-    
-    // A MUDANÇA ESTÁ NA PRÓXIMA LINHA
     const newContent = await this.generateNewContentWithAI(env, filePath, instruction, originalFile.content);
-    
     if (newContent.startsWith("Desculpe")) return newContent;
     const branchName = `ai-edit-${Date.now()}`;
     const createBranchResult = await this.createGithubBranch(env, repo, branchName, mainBranchSha);
     if (!createBranchResult.success) {
-      const errorText = await createBranchResult.message.text();
-      return `❌ Falha ao criar o ambiente de teste: ${errorText}`;
+      // Corrigido para extrair texto do erro
+      const errorData = await createBranchResult.response.json();
+      return `❌ Falha ao criar o ambiente de teste: ${errorData.message}`;
     }
     const commitResult = await this.updateGithubFile(env, repo, filePath, newContent, originalFile.sha, `feat: edita ${filePath} via IA`, branchName);
     if (commitResult.success) {
@@ -95,24 +90,113 @@ export default {
     }
   },
 
-  /**
-   * ATUALIZADO: O PROMPT DO SISTEMA AGORA É EXTREMAMENTE ESPECÍFICO
-   */
   async generateNewContentWithAI(env, filePath, instruction, originalContent) {
     const systemPrompt = `Você é um sistema autônomo de desenvolvimento de software. Sua única tarefa é reescrever e retornar o conteúdo completo e atualizado de um arquivo de código, aplicando uma instrução. NÃO forneça explicações. NÃO forneça comandos de terminal como 'sed' ou 'git'. NÃO escreva nenhuma palavra além do código do arquivo. Sua resposta deve começar com a primeira linha do arquivo (ex: <!DOCTYPE html>) e terminar com a última linha (ex: </html>).`;
     const userPrompt = `INSTRUÇÃO: "${instruction}"\n\nCONTEÚDO ATUAL DO ARQUIVO '${filePath}':\n\n\`\`\`\n${originalContent}\n\`\`\``;
     return this.runGroq(env.GROQ_API_KEY, userPrompt, systemPrompt);
   },
 
-  // O resto das funções permanece igual. O comando cat abaixo contém o código completo e verificado.
-  async getBranchSha(env, repo, branchName) { /* ... */ },
-  async createGithubBranch(env, repo, newBranchName, sha) { /* ... */ },
-  async mergeBranchToMain(env, repo, branchName) { /* ... */ },
-  async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage, branchName = 'master') { /* ... */ },
-  async getGithubFileContent(env, repo, filePath, getFullObject = false, branchName = 'master') { /* ... */ },
-  async getSupabaseUser(env, userId) { /* ... */ },
-  async runGroq(apiKey, userInput, systemInput) { /* ... */ },
-  async sendMessage(token, chatId, text) { /* ... */ },
-  async sendChatAction(token, chatId, action) { /* ... */ },
-  async setupWebhook(request, env) { /* ... */ }
+  async getBranchSha(env, repo, branchName) {
+    const url = `https://api.github.com/repos/${repo}/git/ref/heads/${branchName}`;
+    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.object.sha;
+  },
+
+  async createGithubBranch(env, repo, newBranchName, sha) {
+    const url = `https://api.github.com/repos/${repo}/git/refs`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' },
+        body: JSON.stringify({ ref: `refs/heads/${newBranchName}`, sha: sha })
+    });
+    return { success: response.ok, response: response };
+  },
+
+  async mergeBranchToMain(env, repo, branchName) {
+    const url = `https://api.github.com/repos/${repo}/merges`;
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' },
+            body: JSON.stringify({ base: 'master', head: branchName, commit_message: `Merge: aprova alteração de ${branchName}` })
+        });
+        if (response.status === 201) return `🚀 Aprovado! Publicado no site principal.`;
+        if (response.status === 204) return `✅ Alteração já está no site principal.`;
+        const errorData = await response.json();
+        return `❌ Falha ao aprovar. Erro: ${errorData.message}`;
+    } catch (e) { return `❌ Erro de rede ao tentar aprovar.`; }
+  },
+  
+  async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage, branchName = 'master') {
+    const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+    try {
+        const response = await fetch(githubUrl, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' },
+            body: JSON.stringify({ message: commitMessage, content: btoa(newContent), sha: sha, branch: branchName })
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            return { success: false, message: errorData.message || 'Erro' };
+        }
+        const data = await response.json();
+        return { success: true, url: data.commit.html_url };
+    } catch (e) { return { success: false, message: e.message }; }
+  },
+  
+  async getGithubFileContent(env, repo, filePath, getFullObject = false, branchName = 'master') {
+    const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}?ref=${branchName}`;
+    try {
+      const response = await fetch(githubUrl, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
+      if (!response.ok) return getFullObject ? { error: true, message: `Arquivo não encontrado. Status: ${response.status}` } : `Arquivo não encontrado: ${filePath}`;
+      const data = await response.json();
+      const content = atob(data.content);
+      if (getFullObject) return { content, sha: data.sha, error: false };
+      return `Conteúdo de '${filePath}':\n\n${content.substring(0, 1000)}...`;
+    } catch (e) { return getFullObject ? { error: true, message: "Erro ao ler GitHub." } : "Erro ao ler GitHub."; }
+  },
+
+  async getSupabaseUser(env, userId) {
+    const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
+    try {
+        const response = await fetch(supabaseUrl, { headers: { 'apikey': env.SUPABASE_ANON_KEY, 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` } });
+        if (!response.ok) return { data: null, error: true };
+        const data = await response.json();
+        return { data: data.length > 0 ? data[0] : null, error: false };
+    } catch (e) { return { data: null, error: true }; }
+  },
+  
+  async runGroq(apiKey, userInput, systemInput) {
+      const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+      const response = await fetch(groqUrl, { 
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              messages: [ { role: "system", content: systemInput }, { role: "user", content: userInput } ],
+              model: "llama3-70b-8192"
+          })
+      });
+      if (!response.ok) return "Desculpe, meu cérebro (Groq) está com problemas.";
+      const data = await response.json();
+      return data.choices[0].message.content;
+  },
+
+  async sendMessage(token, chatId, text) {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }), });
+  },
+  async sendChatAction(token, chatId, action) {
+    const url = `https://api.telegram.org/bot${token}/sendChatAction`;
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, action: action }), });
+  },
+  async setupWebhook(request, env) {
+    const workerUrl = `https://${new URL(request.url).hostname}`;
+    const webhookUrl = `${workerUrl}/telegram-webhook`;
+    const telegramApiUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
+    const response = await fetch(telegramApiUrl);
+    const result = await response.json();
+    return new Response(`Webhook configurado para: ${webhookUrl}\n\nResposta do Telegram: ${JSON.stringify(result)}`);
+  }
 };
