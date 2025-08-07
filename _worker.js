@@ -1,4 +1,4 @@
-// RECONSTRUÇÃO - BLOCO 1: CONEXÃO COM TELEGRAM
+// RECONSTRUÇÃO - BLOCO 2: CONEXÃO COM SUPABASE (MEMÓRIA)
 
 export default {
   async fetch(request, env, ctx) {
@@ -10,7 +10,7 @@ export default {
       if (url.pathname === '/setup') {
         return this.setupWebhook(request, env);
       }
-      return new Response('O worker mínimo está funcionando. Conexão Telegram adicionada.');
+      return new Response('O worker mínimo está funcionando. Bloco 2 (Memória) adicionado.');
     } catch (e) {
       return new Response(`Erro fatal no Worker:\n${e.message}`, { status: 500 });
     }
@@ -21,7 +21,6 @@ export default {
     try {
       const payload = await request.json();
       if (payload.message) {
-        // Usamos waitUntil para processar em segundo plano e evitar timeouts
         ctx.waitUntil(this.processMessage(payload.message, env));
       }
       return new Response('OK');
@@ -33,10 +32,44 @@ export default {
 
   async processMessage(message, env) {
     const chatId = message.chat.id;
+    const userId = message.from.id.toString();
     const text = message.text || '(Mensagem não textual)';
 
-    const responseText = `Bloco 1 OK! Recebi sua mensagem: "${text}"`;
+    // --- NOVA LÓGICA DO BLOCO 2 ---
+    const client = await this.getSupabaseUser(env, userId);
+
+    if (client.error) {
+        return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Desculpe, estou com um problema na minha memória (Supabase).");
+    }
+    
+    if (!client.data) {
+        return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `Acesso negado. Seu ID (${userId}) não está registrado.`);
+    }
+
+    // Se chegamos aqui, o usuário foi autenticado com sucesso.
+    const responseText = `Bloco 2 OK! Olá, ${client.data.client_name}. Sua identidade foi confirmada na minha memória.`;
     await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, responseText);
+  },
+  
+  async getSupabaseUser(env, userId) {
+    const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
+    try {
+        const response = await fetch(supabaseUrl, {
+            headers: {
+                'apikey': env.SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`
+            }
+        });
+        if (!response.ok) {
+            console.error("Erro no Supabase:", await response.text());
+            return { data: null, error: true };
+        }
+        const data = await response.json();
+        return { data: data.length > 0 ? data[0] : null, error: false };
+    } catch (e) {
+        console.error("Erro ao conectar com Supabase:", e);
+        return { data: null, error: true };
+    }
   },
   
   async sendMessage(token, chatId, text) {
