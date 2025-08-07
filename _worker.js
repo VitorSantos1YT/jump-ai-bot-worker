@@ -1,9 +1,9 @@
-// FASE 4 - VERSÃO DE DEPURAÇÃO COM CAPTURA DE ERRO
+// FASE 4 - VERSÃO FINAL CORRIGIDA E SEM DEPENDÊNCIAS
 
 export default {
   async fetch(request, env, ctx) {
+    // try...catch para segurança máxima
     try {
-      this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
       const url = new URL(request.url);
       if (url.pathname === '/telegram-webhook') {
         return this.handleTelegramWebhook(request, env, ctx);
@@ -11,7 +11,7 @@ export default {
       if (url.pathname === '/setup') {
         return this.setupWebhook(request, env);
       }
-      return new Response('Assistente de IA está online. Fluxo de preview implementado. Modo de depuração ativo.');
+      return new Response('Assistente de IA está online. Fluxo de preview implementado.');
     } catch (e) {
       console.error(e);
       return new Response(`Erro fatal no Worker:\n\nERRO: ${e.message}\n\nPILHA DE ERROS:\n${e.stack}`, { status: 500 });
@@ -42,6 +42,7 @@ export default {
         const errorMessage = client.error ? "Desculpe, estou com problemas na minha memória." : `Acesso negado. Seu ID (${userId}) não está registrado.`;
         return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, errorMessage);
     }
+
     await this.sendChatAction(env.TELEGRAM_BOT_TOKEN, chatId, 'typing');
     const GITHUB_REPO = env.GITHUB_REPO_URL;
 
@@ -63,6 +64,7 @@ export default {
     }
   },
 
+  // FUNÇÕES DE LÓGICA
   async safeEditFileWithAI(env, repo, filePath, instruction) {
     const mainBranchSha = await this.getBranchSha(env, repo, 'master');
     if (!mainBranchSha) return "❌ Não consegui encontrar a branch principal do projeto.";
@@ -76,7 +78,6 @@ export default {
     const commitResult = await this.updateGithubFile(env, repo, filePath, newContent, originalFile.sha, `feat: edita ${filePath} via IA`, branchName);
     if (commitResult.success) {
         const repoName = repo.split('/')[1];
-        // CORREÇÃO DA URL DE PREVIEW
         const previewUrl = `https://${branchName}--${repoName}.pages.dev`;
         return `✅ Criei um ambiente de teste.\n\n` +
                `👀 Veja como ficou: ${previewUrl}\n\n` +
@@ -93,6 +94,7 @@ export default {
     return this.runGroq(env.GROQ_API_KEY, userPrompt, systemPrompt);
   },
 
+  // FUNÇÕES DE API (GITHUB, SUPABASE, GROQ, TELEGRAM)
   async getBranchSha(env, repo, branchName) {
     const url = `https://api.github.com/repos/${repo}/git/ref/heads/${branchName}`;
     const response = await fetch(url, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
@@ -126,12 +128,86 @@ export default {
     } catch (e) { return `❌ Erro de rede ao tentar aprovar.`; }
   },
   
-  // (O resto das funções, getGithubFileContent, updateGithubFile, getSupabaseUser, etc. permanecem as mesmas)
-  async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage, branchName = 'master') { /* ...código anterior... */ },
-  async getGithubFileContent(env, repo, filePath, getFullObject = false, branchName = 'master') { /* ...código anterior... */ },
-  async getSupabaseUser(env, userId) { /* ...código anterior... */ },
-  async runGroq(apiKey, userInput, systemInput = "Você é Jump.ai.") { /* ...código anterior... */ },
-  async sendMessage(token, chatId, text) { /* ...código anterior... */ },
-  async sendChatAction(token, chatId, action) { /* ...código anterior... */ },
-  async setupWebhook(request, env) { /* ...código anterior... */ }
+  async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage, branchName = 'master') {
+    const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+    try {
+        const response = await fetch(githubUrl, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' },
+            body: JSON.stringify({ message: commitMessage, content: btoa(newContent), sha: sha, branch: branchName })
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            return { success: false, message: errorData.message || 'Erro' };
+        }
+        const data = await response.json();
+        return { success: true, url: data.commit.html_url };
+    } catch (e) { return { success: false, message: e.message }; }
+  },
+  
+  async getGithubFileContent(env, repo, filePath, getFullObject = false, branchName = 'master') {
+    const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}?ref=${branchName}`;
+    try {
+      const response = await fetch(githubUrl, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
+      if (!response.ok) return getFullObject ? { error: true, message: `Arquivo não encontrado. Status: ${response.status}` } : `Arquivo não encontrado: ${filePath}`;
+      const data = await response.json();
+      const content = atob(data.content);
+      if (getFullObject) return { content, sha: data.sha, error: false };
+      return `Conteúdo de '${filePath}':\n\n${content.substring(0, 1000)}...`;
+    } catch (e) { return getFullObject ? { error: true, message: "Erro ao ler GitHub." } : "Erro ao ler GitHub."; }
+  },
+
+  // CÓDIGO CORRIGIDO PARA USAR FETCH NATIVO COM O SUPABASE
+  async getSupabaseUser(env, userId) {
+    const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
+    try {
+        const response = await fetch(supabaseUrl, {
+            headers: {
+                'apikey': env.SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+            }
+        });
+        if (!response.ok) {
+            console.error("Erro no Supabase:", await response.text());
+            return { data: null, error: true };
+        }
+        const data = await response.json();
+        return { data: data.length > 0 ? data[0] : null, error: false };
+    } catch (e) {
+        console.error("Erro ao conectar com Supabase:", e);
+        return { data: null, error: true };
+    }
+  },
+  
+  async runGroq(apiKey, userInput, systemInput = "Você é Jump.ai.") {
+      const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+      const response = await fetch(groqUrl, { 
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              messages: [ { role: "system", content: systemInput }, { role: "user", content: userInput } ],
+              model: "llama3-70b-8192"
+          })
+      });
+      if (!response.ok) return "Desculpe, meu cérebro (Groq) está com problemas.";
+      const data = await response.json();
+      return data.choices[0].message.content;
+  },
+
+  async sendMessage(token, chatId, text) {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }), });
+  },
+  async sendChatAction(token, chatId, action) {
+    const url = `https://api.telegram.org/bot${token}/sendChatAction`;
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, action: action }), });
+  },
+  async setupWebhook(request, env) {
+    const workerUrl = `https://${new URL(request.url).hostname}`;
+    const webhookUrl = `${workerUrl}/telegram-webhook`;
+    const telegramApiUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
+    const response = await fetch(telegramApiUrl);
+    const result = await response.json();
+    return new Response(`Webhook configurado para: ${webhookUrl}\n\nResposta do Telegram: ${JSON.stringify(result)}`);
+  }
 };
