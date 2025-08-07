@@ -1,15 +1,16 @@
-# Adicione "// teste" em qualquer lugar// FASE 3.5 - VERSÃO 
-# COMPLETA E CORRIGIDA (COM INTENÇÃO) Salve e saia
-export default { async fetch(request, env, ctx) { git add .  try { 
-git commit -m "chore: força novo deploy com alteração mínima" const 
-url = new URL(request.url); git push if (url.pathname === 
-'/telegram-webhook') {
+// FASE 3.6 - REFINAMENTO DE INTENÇÃO E CORREÇÃO DE ENCODING
+
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const url = new URL(request.url);
+      if (url.pathname === '/telegram-webhook') {
         return this.handleTelegramWebhook(request, env, ctx);
       }
       if (url.pathname === '/setup') {
         return this.setupWebhook(request, env);
       }
-      return new Response('Assistente de IA está online. Cérebro Intérprete conectado.');
+      return new Response('Assistente de IA está online. Refinamento final implementado.');
     } catch (e) {
       return new Response(`Erro fatal no Worker:\n${e.message}`, { status: 500 });
     }
@@ -42,22 +43,19 @@ url = new URL(request.url); git push if (url.pathname ===
     
     await this.sendChatAction(env.TELEGRAM_BOT_TOKEN, chatId, 'typing');
     
-    // --- LÓGICA DE INTENÇÃO ---
     const intent = await this.getIntentWithAI(env, text);
     const GITHUB_REPO = env.GITHUB_REPO_URL;
 
     switch (intent.action) {
       case 'read_file':
         if (!intent.file_path) {
-          await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Entendi que você quer ler um arquivo, mas não consegui identificar qual. Por favor, seja mais específico.");
+          await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Entendi que você quer ler um arquivo, mas não consegui identificar qual.");
           break;
         }
         const fileContent = await this.getGithubFileContent(env, GITHUB_REPO, intent.file_path);
         await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, fileContent);
         break;
       
-      // Futuramente, teremos 'edit_file', 'approve_change', etc. aqui
-
       case 'conversation':
       default:
         const aiResponse = await this.runGroq(env.GROQ_API_KEY, text);
@@ -67,12 +65,12 @@ url = new URL(request.url); git push if (url.pathname ===
   },
 
   async getIntentWithAI(env, userInput) {
-    const systemPrompt = `Analise a mensagem do usuário. Sua tarefa é extrair a intenção e as entidades. Responda APENAS com um objeto JSON válido. As ações (action) possíveis são: "read_file", "edit_file", "approve_change", "conversation". Se a ação for "read_file" ou "edit_file", extraia o caminho do arquivo (file_path). Se não tiver certeza ou for uma saudação, a ação é "conversation". Exemplo: User: "lee arquivo teste.html" -> {"action": "read_file", "file_path": "teste.html"}`;
+    const systemPrompt = `Analise a mensagem do usuário. Sua tarefa é extrair a intenção e as entidades. Responda APENAS com um objeto JSON válido. As ações possíveis são: "read_file", "edit_file", "approve_change", "conversation". Se for uma saudação simples (oi, olá, opa, tudo bem), uma pergunta genérica ou se não tiver certeza, a ação é SEMPRE "conversation". Se a ação for "read_file" ou "edit_file", extraia o caminho do arquivo (file_path). Exemplo: User: "lee o arquivo teste.html" -> {"action": "read_file", "file_path": "teste.html"}`;
     const responseText = await this.runGroq(env.GROQ_API_KEY, userInput, systemPrompt);
     try {
       return JSON.parse(responseText);
     } catch (e) {
-      console.error("Erro ao interpretar a intenção da IA. Resposta não foi JSON:", responseText);
+      console.error("Erro ao interpretar a intenção da IA:", responseText);
       return { action: 'conversation' };
     }
   },
@@ -80,9 +78,7 @@ url = new URL(request.url); git push if (url.pathname ===
   async getSupabaseUser(env, userId) {
     const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
     try {
-        const response = await fetch(supabaseUrl, {
-            headers: { 'apikey': env.SUPABASE_ANON_KEY, 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` }
-        });
+        const response = await fetch(supabaseUrl, { headers: { 'apikey': env.SUPABASE_ANON_KEY, 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` } });
         if (!response.ok) return { data: null, error: true };
         const data = await response.json();
         return { data: data.length > 0 ? data[0] : null, error: false };
@@ -95,7 +91,18 @@ url = new URL(request.url); git push if (url.pathname ===
       const response = await fetch(githubUrl, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
       if (!response.ok) return `Arquivo não encontrado: ${filePath}`;
       const data = await response.json();
-      const content = atob(data.content);
+      
+      // --- CORREÇÃO DO ENCODING ---
+      // Usamos TextDecoder para garantir a leitura correta de UTF-8
+      const base64 = data.content;
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const content = new TextDecoder('utf-8').decode(bytes);
+      // --- FIM DA CORREÇÃO ---
+
       return `Conteúdo de '${filePath}':\n\n${content.substring(0, 1000)}...`;
     } catch (e) { return "Erro ao ler o GitHub."; }
   },
@@ -112,7 +119,6 @@ url = new URL(request.url); git push if (url.pathname ===
       });
       if (!response.ok) return "Desculpe, meu cérebro (Groq) está com problemas.";
       const data = await response.json();
-      // Adiciona uma verificação para garantir que a resposta tenha o formato esperado
       if (data.choices && data.choices[0] && data.choices[0].message) {
         return data.choices[0].message.content;
       }
@@ -134,6 +140,5 @@ url = new URL(request.url); git push if (url.pathname ===
     const response = await fetch(telegramApiUrl);
     const result = await response.json();
     return new Response(`Webhook configurado para: ${webhookUrl}\n\nResposta do Telegram: ${JSON.stringify(result)}`);
-// teste
   }
 };
