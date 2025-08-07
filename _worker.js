@@ -1,10 +1,7 @@
-// FASE 3: IMPLEMENTANDO A ESCRITA NO GITHUB
-
-import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js';
+// FASE 3 CORRIGIDA - SEM DEPENDÊNCIAS E COM CAPACIDADE DE ESCRITA
 
 export default {
   async fetch(request, env, ctx) {
-    this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
     const url = new URL(request.url);
     if (url.pathname === '/telegram-webhook') {
       return this.handleTelegramWebhook(request, env, ctx);
@@ -12,7 +9,7 @@ export default {
     if (url.pathname === '/setup') {
       return this.setupWebhook(request, env);
     }
-    return new Response('Assistente de IA está online. Memória e Braços (Leitura/Escrita) conectados.');
+    return new Response('Assistente de IA está online. Braços (Leitura/Escrita) conectados.');
   },
 
   async handleTelegramWebhook(request, env, ctx) {
@@ -47,20 +44,18 @@ export default {
     
     const GITHUB_REPO = env.GITHUB_REPO_URL;
 
-    // --- NOVA LÓGICA DE COMANDOS ---
     if (text.toLowerCase().startsWith('ler arquivo')) {
         const filePath = text.substring(12).trim();
         const fileContent = await this.getGithubFileContent(env, GITHUB_REPO, filePath);
-        await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, fileContent);
+        await this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, fileContent.message || fileContent);
 
     } else if (text.toLowerCase().startsWith('editar arquivo')) {
-        // Exemplo: editar arquivo index.html "mude o título para Olá Mundo"
         const parts = text.substring(15).trim().split('"');
         const filePath = parts[0].trim();
         const instruction = parts[1];
 
         if (!filePath || !instruction) {
-            return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Formato inválido. Use: editar arquivo [nome do arquivo] \"[instrução]\"");
+            return this.sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Formato inválido. Use: editar arquivo [nome] \"[instrução]\"");
         }
         
         const response = await this.editFileWithAI(env, GITHUB_REPO, filePath, instruction);
@@ -72,25 +67,22 @@ export default {
     }
   },
 
-  /**
-   * NOVO: Orquestra o processo de edição de um arquivo
-   */
   async editFileWithAI(env, repo, filePath, instruction) {
-    // 1. Lê o conteúdo atual do arquivo
-    const originalContent = await this.getGithubFileContent(env, repo, filePath, true); // true para obter o conteúdo completo
-    if (originalContent.error) {
-        return originalContent.message;
+    const originalFile = await this.getGithubFileContent(env, repo, filePath, true);
+    if (originalFile.error) {
+        return originalFile.message;
     }
     
-    // 2. Monta o prompt para a IA
     const systemPrompt = `Você é um desenvolvedor web expert. Sua tarefa é editar o arquivo a seguir com base na instrução do usuário. Retorne APENAS o conteúdo completo e atualizado do arquivo. Não inclua nenhuma explicação, apenas o código.`;
-    const userPrompt = `INSTRUÇÃO: "${instruction}"\n\nCONTEÚDO ATUAL DO ARQUIVO '${filePath}':\n\n${originalContent.content}`;
+    const userPrompt = `INSTRUÇÃO: "${instruction}"\n\nCONTEÚDO ATUAL DO ARQUIVO '${filePath}':\n\n${originalFile.content}`;
 
-    // 3. Pede para a IA gerar o novo código
     const newContent = await this.runGroq(env.GROQ_API_KEY, userPrompt, systemPrompt);
 
-    // 4. Salva o novo conteúdo no GitHub
-    const commitResult = await this.updateGithubFile(env, repo, filePath, newContent, originalContent.sha, `feat: edita ${filePath} via IA`);
+    if (newContent.startsWith("Desculpe")) { // Se a IA falhar, não fazemos o commit
+        return newContent;
+    }
+
+    const commitResult = await this.updateGithubFile(env, repo, filePath, newContent, originalFile.sha, `feat: edita ${filePath} via IA`);
 
     if (commitResult.success) {
         return `✅ Arquivo '${filePath}' atualizado com sucesso!\nVeja a alteração aqui: ${commitResult.url}`;
@@ -102,53 +94,41 @@ export default {
   async getGithubFileContent(env, repo, filePath, getFullObject = false) {
     const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
     try {
-      const response = await fetch(githubUrl, {
-        headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' }
-      });
+      const response = await fetch(githubUrl, { headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot' } });
       if (!response.ok) {
         return getFullObject ? { error: true, message: `Arquivo não encontrado. Status: ${response.status}` } : `Arquivo não encontrado: ${filePath}`;
       }
       const data = await response.json();
       const content = atob(data.content);
       if (getFullObject) {
-        return { content: content, sha: data.sha };
+        return { content: content, sha: data.sha, error: false };
       }
       return `Conteúdo de '${filePath}':\n\n${content.substring(0, 1000)}...`;
     } catch (e) { return getFullObject ? { error: true, message: "Erro ao ler o GitHub." } : "Erro ao ler o GitHub."; }
   },
 
-  /**
-   * NOVO: Salva (faz commit) de um arquivo no GitHub
-   */
   async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage) {
     const githubUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
     try {
         const response = await fetch(githubUrl, {
             method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-                'User-Agent': 'JumpAI-Bot',
-                'Accept': 'application/vnd.github.v3+json'
-            },
+            headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'User-Agent': 'JumpAI-Bot', 'Accept': 'application/vnd.github.v3+json' },
             body: JSON.stringify({
                 message: commitMessage,
-                content: btoa(newContent), // Codifica o novo conteúdo para base64
-                sha: sha // O 'sha' é necessário para provar que estamos atualizando a versão mais recente
+                content: btoa(newContent),
+                sha: sha
             })
         });
-
         if (!response.ok) {
             const errorData = await response.json();
             return { success: false, message: errorData.message || 'Erro desconhecido' };
         }
         const data = await response.json();
         return { success: true, url: data.commit.html_url };
-    } catch (e) {
-        return { success: false, message: e.message };
-    }
+    } catch (e) { return { success: false, message: e.message }; }
   },
-
-  async getSupabaseUser(env, userId) { /* ...código anterior... */ 
+  
+  async getSupabaseUser(env, userId) {
     const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/clients?telegram_id=eq.${userId}&select=*`;
     try {
         const response = await fetch(supabaseUrl, { headers: { 'apikey': env.SUPABASE_ANON_KEY, 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` } });
@@ -157,7 +137,8 @@ export default {
         return { data: data.length > 0 ? data[0] : null, error: false };
     } catch (e) { return { data: null, error: true }; }
   },
-  async runGroq(apiKey, userInput, systemInput = "Você é Jump.ai. Responda de forma concisa e útil.") { /* ...código anterior... */ 
+  
+  async runGroq(apiKey, userInput, systemInput = "Você é Jump.ai. Responda de forma concisa e útil.") {
       const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
       const response = await fetch(groqUrl, { 
           method: 'POST',
@@ -171,15 +152,16 @@ export default {
       const data = await response.json();
       return data.choices[0].message.content;
   },
-  async sendMessage(token, chatId, text) { /* ...código anterior... */ 
+
+  async sendMessage(token, chatId, text) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }), });
   },
-  async sendChatAction(token, chatId, action) { /* ...código anterior... */ 
+  async sendChatAction(token, chatId, action) {
     const url = `https://api.telegram.org/bot${token}/sendChatAction`;
     await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, action: action }), });
   },
-  async setupWebhook(request, env) { /* ...código anterior... */ 
+  async setupWebhook(request, env) {
     const workerUrl = `https://${new URL(request.url).hostname}`;
     const webhookUrl = `${workerUrl}/telegram-webhook`;
     const telegramApiUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${webhookUrl}`;
