@@ -1,10 +1,9 @@
-// FASE 3.5 - VERSÃO COMPLETA E CORRIGIDA (COM INTENÇÃO)
-
-export default {
-  async fetch(request, env, ctx) {
-    try {
-      const url = new URL(request.url);
-      if (url.pathname === '/telegram-webhook') {
+# Adicione "// teste" em qualquer lugar// FASE 3.5 - VERSÃO 
+# COMPLETA E CORRIGIDA (COM INTENÇÃO) Salve e saia
+export default { async fetch(request, env, ctx) { git add .  try { 
+git commit -m "chore: força novo deploy com alteração mínima" const 
+url = new URL(request.url); git push if (url.pathname === 
+'/telegram-webhook') {
         return this.handleTelegramWebhook(request, env, ctx);
       }
       if (url.pathname === '/setup') {
@@ -135,5 +134,6 @@ export default {
     const response = await fetch(telegramApiUrl);
     const result = await response.json();
     return new Response(`Webhook configurado para: ${webhookUrl}\n\nResposta do Telegram: ${JSON.stringify(result)}`);
+// teste
   }
 };
