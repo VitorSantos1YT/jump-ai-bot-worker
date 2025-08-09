@@ -1,59 +1,67 @@
 
 export default {
   async fetch(request, env) {
-    if (request.method === "POST") {
-      try {
+    // ESTE É O TRY...CATCH MAIS IMPORTANTE. ELE PEGA QUALQUER ERRO.
+    try {
+      if (request.method === "POST") {
         const payload = await request.json();
         if (payload.message) {
           await handleUpdate(payload.message, env);
         }
-      } catch (e) {
-        // Se algo der errado no fluxo principal, vamos logar o erro.
-        console.error("Erro no fetch principal:", e);
       }
+    } catch (e) {
+      console.error("ERRO CRÍTICO NO FETCH PRINCIPAL:", e);
     }
-    return new Response("OK");
+    // Sempre retorne OK para o Telegram, não importa o que aconteça.
+    return new Response("OK", { status: 200 });
   }
 };
 
 async function handleUpdate(message, env) {
   const chatId = message.chat.id;
-  
+  const userText = message.text || "(Mensagem sem texto)";
+
   try {
-    const userText = message.text || "(Mensagem sem texto)";
+    // --- CORREÇÃO DE SINTAXE CRÍTICA AQUI ---
+    const promptText = `Como um CEO de IA, recebi a seguinte mensagem de um usuário: "${userText}". Minha primeira ação é confirmar o recebimento e o início do plano.`;
+    
+    const geminiPayload = {
+      contents: [{
+        parts: [{ text: promptText }]
+      }]
+    };
 
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${env.GOOGLE_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: `Como um CEO de IA, recebi a seguinte mensagem de um usuário: "${userText}". Minha primeira ação é confirmar o recebimento e o início do plano.` }]
-        }]
-      })
+      body: JSON.stringify(geminiPayload) // Usamos o objeto construído separadamente
     });
+
+    if (!geminiResponse.ok) {
+        // Se a resposta da API não foi bem-sucedida (ex: erro 400, 401, 500)
+        const errorBody = await geminiResponse.text();
+        throw new Error(`A API do Gemini retornou um erro: ${geminiResponse.status} ${errorBody}`);
+    }
 
     const geminiData = await geminiResponse.json();
 
-    // --- CÓDIGO MAIS ROBUSTO AQUI ---
-    // Verifica se a resposta foi bem-sucedida e se o texto existe
-    if (geminiData && geminiData.candidates && geminiData.candidates[0] && geminiData.candidates[0].content && geminiData.candidates[0].content.parts && geminiData.candidates[0].content.parts[0]) {
+    if (geminiData && geminiData.candidates && geminiData.candidates.length > 0) {
       const responseText = geminiData.candidates[0].content.parts[0].text;
       await sendMessage(chatId, responseText, env);
     } else {
-      // Se a resposta veio em um formato inesperado, avisa o usuário
       console.error("Resposta inesperada da API Gemini:", JSON.stringify(geminiData));
-      await sendMessage(chatId, "Desculpe, não consegui processar a resposta da IA no momento.", env);
+      await sendMessage(chatId, "Não recebi uma resposta válida da IA no momento.", env);
     }
 
   } catch (e) {
-    // Se a chamada da API ou qualquer outra coisa falhar, avisa o usuário e loga o erro
     console.error("Erro no handleUpdate:", e);
-    await sendMessage(message.chat.id, "Ocorreu um erro interno ao processar sua solicitação.", env);
+    await sendMessage(chatId, `Ocorreu um erro interno: ${e.message}`, env);
   }
 }
 
 async function sendMessage(chatId, text, env) {
   const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  // Não precisamos de try/catch aqui, pois o principal já está protegido.
   await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

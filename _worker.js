@@ -1,41 +1,71 @@
-// VERSÃO 1.1 - PROMPT DE EDIÇÃO À PROVA DE FALHAS (PROMPT DE TITÂNIO)
 
 export default {
-  // O código do fetch e handleTelegramWebhook permanece o mesmo...
-  
-  async generateNewContentWithAI(env, filePath, instruction, originalContent) {
-    // ESTE É O NOVO PROMPT, MUITO MAIS RÍGIDO
-    const systemPrompt = `Você é um sistema de escrita de arquivos. Sua única e exclusiva tarefa é retornar o conteúdo completo e modificado de um arquivo de código.
-REGRAS ABSOLUTAS:
-1.  NÃO escreva nenhuma palavra de explicação, saudação ou comentário. NADA.
-2.  NÃO use formatação de markdown como \`\`\`.
-3.  Sua resposta deve ser APENAS o código. Ela deve começar com a primeira letra da primeira linha do código (ex: '/') e terminar com o último caractere do código (ex: ';').
-4.  Responda sempre em português do Brasil.
-5.  Se a instrução do usuário for impossível ou perigosa, retorne o conteúdo original do arquivo sem nenhuma modificação.`;
-
-    const userPrompt = `Baseado no CONTEÚDO ATUAL abaixo, aplique a seguinte INSTRUÇÃO e retorne o arquivo completo.\n\nINSTRUÇÃO: "${instruction}"\n\nCONTEÚDO ATUAL:\n${originalContent}`;
-    
-    return this.runGroq(env.GROQ_API_KEY, userPrompt, systemPrompt);
-  },
-
-  // Todo o resto do código está aqui, completo e sem alterações.
-  // O comando cat garante que o arquivo fique 100% correto.
-  
-  async fetch(request, env, ctx) { /* ...código completo... */ },
-  async handleTelegramWebhook(request, env, ctx) { /* ...código completo... */ },
-  async processMessage(message, env) { /* ...código completo... */ },
-  async getIntentWithAI(env, userInput) { /* ...código completo... */ },
-  async safeEditFileWithAI(env, repo, filePath, instruction, chatId) { /* ...código completo... */ },
-  async getSupabaseUser(env, userId) { /* ...código completo... */ },
-  getBranchFromHost(env, hostname) { /* ...código completo... */ },
-  async serveGithubFile(env, repo, filePath, branchName) { /* ...código completo... */ },
-  async getGithubFileContent(env, repo, filePath, getFullObject = false, branchName = 'master') { /* ...código completo... */ },
-  async updateGithubFile(env, repo, filePath, newContent, sha, commitMessage, branchName = 'master') { /* ...código completo... */ },
-  async getBranchSha(env, repo, branchName) { /* ...código completo... */ },
-  async createGithubBranch(env, repo, newBranchName, sha) { /* ...código completo... */ },
-  async mergeBranchToMain(env, repo, branchName) { /* ...código completo... */ },
-  async runGroq(apiKey, userInput, systemInput = "Você é Jump.ai.") { /* ...código completo... */ },
-  async sendMessage(token, chatId, text) { /* ...código completo... */ },
-  async sendChatAction(token, chatId, action) { /* ...código completo... */ },
-  async setupWebhook(request, env) { /* ...código completo... */ }
+  async fetch(request, env) {
+    // ESTE É O TRY...CATCH MAIS IMPORTANTE. ELE PEGA QUALQUER ERRO.
+    try {
+      if (request.method === "POST") {
+        const payload = await request.json();
+        if (payload.message) {
+          await handleUpdate(payload.message, env);
+        }
+      }
+    } catch (e) {
+      console.error("ERRO CRÍTICO NO FETCH PRINCIPAL:", e);
+    }
+    // Sempre retorne OK para o Telegram, não importa o que aconteça.
+    return new Response("OK", { status: 200 });
+  }
 };
+
+async function handleUpdate(message, env) {
+  const chatId = message.chat.id;
+  const userText = message.text || "(Mensagem sem texto)";
+
+  try {
+    // --- CORREÇÃO DE SINTAXE CRÍTICA AQUI ---
+    const promptText = `Como um CEO de IA, recebi a seguinte mensagem de um usuário: "${userText}". Minha primeira ação é confirmar o recebimento e o início do plano.`;
+    
+    const geminiPayload = {
+      contents: [{
+        parts: [{ text: promptText }]
+      }]
+    };
+
+    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${env.GOOGLE_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiPayload) // Usamos o objeto construído separadamente
+    });
+
+    if (!geminiResponse.ok) {
+        // Se a resposta da API não foi bem-sucedida (ex: erro 400, 401, 500)
+        const errorBody = await geminiResponse.text();
+        throw new Error(`A API do Gemini retornou um erro: ${geminiResponse.status} ${errorBody}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+
+    if (geminiData && geminiData.candidates && geminiData.candidates.length > 0) {
+      const responseText = geminiData.candidates[0].content.parts[0].text;
+      await sendMessage(chatId, responseText, env);
+    } else {
+      console.error("Resposta inesperada da API Gemini:", JSON.stringify(geminiData));
+      await sendMessage(chatId, "Não recebi uma resposta válida da IA no momento.", env);
+    }
+
+  } catch (e) {
+    console.error("Erro no handleUpdate:", e);
+    await sendMessage(chatId, `Ocorreu um erro interno: ${e.message}`, env);
+  }
+}
+
+async function sendMessage(chatId, text, env) {
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  // Não precisamos de try/catch aqui, pois o principal já está protegido.
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text: text })
+  });
+}
+
