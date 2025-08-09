@@ -7,9 +7,7 @@ import { sendMessage } from '../lib/telegram.js';
 export default {
   async fetch(request, env) {
     const body = await request.json();
-    if (!body.message) {
-      return new Response("OK");
-    }
+    if (!body.message) return new Response("OK");
 
     const chatId = body.message.chat.id;
     const user = getUser(body.message.from);
@@ -26,7 +24,7 @@ export default {
 
       const [command, ...params] = text.split(" ");
       if (!command.startsWith('/')) {
-        await sendMessage(env, chatId, "Olá! Sou o Jump.ai. Use comandos como /edite ou /crie para começar.");
+        await sendMessage(env, chatId, "Olá! Sou o Jump.ai. Use /edite ou /crie.");
         return new Response("OK");
       }
 
@@ -34,36 +32,36 @@ export default {
         const filePath = params[0];
         const instruction = params.slice(1).join(" ");
         if (!filePath || !instruction) {
-          await sendMessage(env, chatId, `Uso incorreto. Ex: ${command} caminho/arquivo.js sua instrução aqui`);
+          await sendMessage(env, chatId, `Uso: ${command} caminho/arquivo.js instrução`);
           return new Response("OK");
         }
 
-        await sendMessage(env, chatId, `Entendido. Iniciando operação de "${command}"...`);
+        await sendMessage(env, chatId, `Iniciando operação "${command}"...`);
 
         const branchName = `bot/${user.username}-${Date.now()}`;
         await createBranch(env, branchName);
         log(user, "Branch criado", { branchName });
 
         const job = { type: command, user, chatId, branchName, filePath, instruction };
-        // Simulação de processamento de fila
-        log(user, "Processando job (simulação)", job);
-        const newContent = `// Arquivo gerado pelo bot\n// Instrução: ${instruction}`;
-        await updateFileInBranch(env, job.branchName, job.filePath, `bot: ${command} ${job.filePath}`, newContent);
-        log(user, "Arquivo atualizado no branch", { filePath });
+        addJobToQueue(env, job);
 
-        await createPullRequest(env, job.branchName, `[Bot] ${command}: ${job.filePath}`, `Operação solicitada por @${user.username}.`);
+        const newContent = `// Arquivo gerado pelo bot\n// Instrução: ${instruction}`;
+        await updateFileInBranch(env, branchName, filePath, `bot: ${command} ${filePath}`, newContent);
+        log(user, "Arquivo atualizado", { filePath });
+
+        await createPullRequest(env, branchName, `[Bot] ${command}: ${filePath}`, `Solicitado por @${user.username}`);
         log(user, "Pull Request criado");
 
-        await sendMessage(env, chatId, `Operação concluída. Um Pull Request foi aberto no GitHub para sua revisão. Branch: ${branchName}`);
+        await sendMessage(env, chatId, `PR criado com sucesso! Branch: ${branchName}`);
       } else {
-        await sendMessage(env, chatId, "Comando não reconhecido. Tente /edite ou /crie.");
+        await sendMessage(env, chatId, "Comando não reconhecido. Use /edite ou /crie.");
       }
 
       return new Response("OK");
 
     } catch (err) {
-      error(user, "Erro fatal no worker", err);
-      await sendMessage(env, chatId, `Ocorreu um erro crítico: ${err.message}`);
+      error(user, "Erro no worker", err);
+      await sendMessage(env, chatId, `Erro crítico: ${err.message}`);
       return new Response("Internal Server Error", { status: 500 });
     }
   }
