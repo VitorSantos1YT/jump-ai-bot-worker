@@ -1,51 +1,54 @@
 
-// GitHub API Helper Functions
+// =================================================================================
+// FUNÇÕES AUXILIARES DA API DO GITHUB
+// =================================================================================
+
 async function getFileContent(repo, path, token) {
   const url = `https://api.github.com/repos/${repo}/contents/${path}`;
-  const response = await fetch(url, { headers: { "Authorization": `token ${token}`, "Accept": "application/vnd.github.v3.raw" } });
-  if (!response.ok) throw new Error(`Erro ao ler arquivo: ${response.statusText}`);
-  const content = await response.text();
-  
-  const shaResponse = await fetch(url, { headers: { "Authorization": `token ${token}`, "Accept": "application/vnd.github.v3+json" } });
-  const shaData = await shaResponse.json();
-  return { content, sha: shaData.sha };
+  const response = await fetch(url, { headers: { "Authorization": `token ${token}`, "Accept": "application/vnd.github.v3+json" } });
+  const data = await response.json();
+  if (!response.ok) throw new Error(`Arquivo não encontrado ou erro na API do GitHub: ${data.message}`);
+  return { content: atob(data.content), sha: data.sha }; // Decodifica de base64 para texto
 }
 
 async function updateFile(repo, path, message, content, sha, token) {
   const url = `https://api.github.com/repos/${repo}/contents/${path}`;
-  const newContentBase64 = btoa(content);
-  
+  const newContentBase64 = btoa(content); // Codifica o novo conteúdo para base64
   const response = await fetch(url, {
     method: "PUT",
-    headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
+    headers: { "Authorization": `token ${token}`, "Content-Type": "application/json", "Accept": "application/vnd.github.v3+json" },
     body: JSON.stringify({ message, content: newContentBase64, sha })
   });
-  if (!response.ok) throw new Error(`Erro ao atualizar arquivo: ${response.statusText}`);
+  if (!response.ok) throw new Error(`Erro ao atualizar arquivo: ${await response.text()}`);
   return await response.json();
 }
 
-// AI Helper Function
+async function createFile(repo, path, message, content, token) {
+  const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+  const newContentBase64 = btoa(content);
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { "Authorization": `token ${token}`, "Content-Type": "application/json", "Accept": "application/vnd.github.v3+json" },
+    body: JSON.stringify({ message, content: newContentBase64 })
+  });
+  if (!response.ok) throw new Error(`Erro ao criar arquivo: ${await response.text()}`);
+  return await response.json();
+}
+
+// =================================================================================
+// FUNÇÃO DE INTELIGÊNCIA ARTIFICIAL (LLAMA 4)
+// =================================================================================
+
 async function generateNewContentWithLlama(instruction, originalContent, env) {
-  // --- ESTE É O NOVO MANUAL DE INSTRUÇÕES PROFISSIONAL ---
   const systemPrompt = `
   **PERSONA:** Você é um Engenheiro de Software Sênior, especialista em código limpo, eficiente e seguro. Você é meticuloso, preciso e direto.
-
   **OBJETIVO:** Sua única função é receber o conteúdo de um arquivo de código (CONTEÚDO ATUAL) e uma instrução de modificação (INSTRUÇÃO). Sua única saída deve ser o CONTEÚDO COMPLETO E ATUALIZADO do arquivo.
-
   **REGRAS ABSOLUTAS:**
-  1.  NUNCA escreva explicações, saudações, comentários ou qualquer texto que não seja o código puro do arquivo.
-  2.  NÃO use formatação markdown (como \`\`\`javascript).
-  3.  Sua resposta DEVE começar com o primeiro caractere da primeira linha de código e terminar com o último caractere da última linha.
-  4.  Responda sempre em português do Brasil.
-  5.  Se a instrução do usuário for impossível, perigosa, ou levar a um código que não funciona, retorne o CONTEÚDO ATUAL original sem nenhuma modificação.
-
-  **PROCESSO DE PENSAMENTO (Execute internamente):**
-  1.  Leia e entenda completamente a INSTRUÇÃO.
-  2.  Analise o CONTEÚDO ATUAL para identificar onde a modificação deve ser aplicada.
-  3.  Aplique a modificação solicitada.
-  4.  Releia o arquivo inteiro que você modificou para garantir que a sintaxe continua válida e que a lógica está correta.
-  5.  Retorne o conteúdo completo do arquivo.
-  `;
+  1. NUNCA escreva explicações, saudações, comentários ou qualquer texto que não seja o código puro do arquivo.
+  2. NÃO use formatação markdown (como \`\`\`javascript).
+  3. Sua resposta DEVE começar com o primeiro caractere da primeira linha de código e terminar com o último caractere da última linha.
+  4. Se a instrução for para criar um novo conteúdo do zero (CONTEÚDO ATUAL estará vazio), crie o conteúdo inicial com base na instrução.
+  5. Se a instrução do usuário for impossível ou perigosa, retorne o CONTEÚDO ATUAL original sem nenhuma modificação.`;
   
   const userPrompt = `Baseado no CONTEÚDO ATUAL abaixo, aplique a seguinte INSTRUÇÃO e retorne o arquivo COMPLETO.\n\nINSTRUÇÃO:\n${instruction}\n\nCONTEÚDO ATUAL:\n${originalContent}`;
 
@@ -57,42 +60,51 @@ async function generateNewContentWithLlama(instruction, originalContent, env) {
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }]
     })
   });
+  if (!response.ok) throw new Error(`Erro na API do Llama: ${await response.text()}`);
   const data = await response.json();
   return data.choices[0].message.content;
 }
 
-// Main Telegram Handler
+// =================================================================================
+// ORQUESTRADOR PRINCIPAL (CEO) E TELEGRAM
+// =================================================================================
+
 async function handleUpdate(message, env) {
   const chatId = message.chat.id;
   const userText = message.text || "";
 
-  if (userText.startsWith("/edite ")) {
-    try {
-      await sendMessage(chatId, "Recebido. Analisando o arquivo e consultando o Engenheiro de Software Sênior (Llama)...", env);
-      
+  try {
+    if (userText.startsWith("/edite ")) {
+      await sendMessage(chatId, "Diretiva de EDIÇÃO recebida. Acionando Engenheiro de Software...", env);
       const [_, filePath, ...instructionParts] = userText.split(" ");
       const instruction = instructionParts.join(" ");
-
-      if (!filePath || !instruction) {
-        await sendMessage(chatId, "Uso correto: /edite <caminho_do_arquivo> <instrução>", env);
-        return;
-      }
+      if (!filePath || !instruction) throw new Error("Uso correto: /edite <caminho_do_arquivo> <instrução>");
       
       const { content: originalContent, sha } = await getFileContent(env.GITHUB_REPO_URL, filePath, env.GITHUB_TOKEN);
       const newContent = await generateNewContentWithLlama(instruction, originalContent, env);
-      
       await updateFile(env.GITHUB_REPO_URL, filePath, `Bot edit: ${instruction}`, newContent, sha, env.GITHUB_TOKEN);
       
-      await sendMessage(chatId, `Operação concluída. O arquivo "${filePath}" foi atualizado no GitHub.`, env);
+      await sendMessage(chatId, `SUCESSO: O arquivo "${filePath}" foi modificado no GitHub.`, env);
 
-    } catch (e) {
-      console.error(e);
-      await sendMessage(chatId, `Ocorreu um erro na operação de edição: ${e.message}`, env);
+    } else if (userText.startsWith("/crie ")) {
+      await sendMessage(chatId, "Diretiva de CRIAÇÃO recebida. Acionando Engenheiro de Software...", env);
+      const [_, filePath, ...instructionParts] = userText.split(" ");
+      const instruction = instructionParts.join(" ");
+      if (!filePath || !instruction) throw new Error("Uso correto: /crie <caminho_do_arquivo> <descrição do conteúdo>");
+
+      const newContent = await generateNewContentWithLlama(instruction, "", env); // Conteúdo original é vazio
+      await createFile(env.GITHUB_REPO_URL, filePath, `Bot create: ${filePath}`, newContent, env.GITHUB_TOKEN);
+
+      await sendMessage(chatId, `SUCESSO: O arquivo "${filePath}" foi criado no GitHub.`, env);
+
+    } else {
+      // Para qualquer outra mensagem, apenas confirme o recebimento.
+      // Aqui podemos adicionar a lógica de chamar o Gemini para conversas no futuro.
+      await sendMessage(chatId, `Comando não reconhecido. Comandos disponíveis: /edite e /crie.`, env);
     }
-  } else {
-    // Aqui continua a lógica do CEO (Gemini) para conversas normais
-    const responseText = `Comando não reconhecido. Para editar um arquivo, use: /edite <arquivo> <instrução>`;
-    await sendMessage(chatId, responseText, env);
+  } catch (e) {
+    console.error(e);
+    await sendMessage(chatId, `ERRO NA OPERAÇÃO: ${e.message}`, env);
   }
 }
 
@@ -105,7 +117,7 @@ async function sendMessage(chatId, text, env) {
   });
 }
 
-// Main Worker Entrypoint
+// Ponto de entrada principal do Worker
 export default {
   async fetch(request, env) {
     try {
@@ -116,7 +128,7 @@ export default {
         }
       }
     } catch (e) {
-      console.error("ERRO CRÍTICO:", e);
+      console.error("ERRO CRÍTICO NO WORKER:", e);
     }
     return new Response("OK", { status: 200 });
   }
