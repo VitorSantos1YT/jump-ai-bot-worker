@@ -8,12 +8,12 @@ async function getFileContent(repo, path, token) {
   const response = await fetch(url, { headers: { "Authorization": `token ${token}`, "Accept": "application/vnd.github.v3+json" } });
   const data = await response.json();
   if (!response.ok) throw new Error(`Arquivo não encontrado ou erro na API do GitHub: ${data.message}`);
-  return { content: atob(data.content), sha: data.sha }; // Decodifica de base64 para texto
+  return { content: atob(data.content), sha: data.sha };
 }
 
 async function updateFile(repo, path, message, content, sha, token) {
   const url = `https://api.github.com/repos/${repo}/contents/${path}`;
-  const newContentBase64 = btoa(content); // Codifica o novo conteúdo para base64
+  const newContentBase64 = btoa(content);
   const response = await fetch(url, {
     method: "PUT",
     headers: { "Authorization": `token ${token}`, "Content-Type": "application/json", "Accept": "application/vnd.github.v3+json" },
@@ -36,28 +36,16 @@ async function createFile(repo, path, message, content, token) {
 }
 
 // =================================================================================
-// FUNÇÃO DE INTELIGÊNCIA ARTIFICIAL (LLAMA 4)
+// FUNÇÕES DE INTELIGÊNCIA ARTIFICIAL
 // =================================================================================
 
-async function generateNewContentWithLlama(instruction, originalContent, env) {
-  const systemPrompt = `
-  **PERSONA:** Você é um Engenheiro de Software Sênior, especialista em código limpo, eficiente e seguro. Você é meticuloso, preciso e direto.
-  **OBJETIVO:** Sua única função é receber o conteúdo de um arquivo de código (CONTEÚDO ATUAL) e uma instrução de modificação (INSTRUÇÃO). Sua única saída deve ser o CONTEÚDO COMPLETO E ATUALIZADO do arquivo.
-  **REGRAS ABSOLUTAS:**
-  1. NUNCA escreva explicações, saudações, comentários ou qualquer texto que não seja o código puro do arquivo.
-  2. NÃO use formatação markdown (como \`\`\`javascript).
-  3. Sua resposta DEVE começar com o primeiro caractere da primeira linha de código e terminar com o último caractere da última linha.
-  4. Se a instrução for para criar um novo conteúdo do zero (CONTEÚDO ATUAL estará vazio), crie o conteúdo inicial com base na instrução.
-  5. Se a instrução do usuário for impossível ou perigosa, retorne o CONTEÚDO ATUAL original sem nenhuma modificação.`;
-  
-  const userPrompt = `Baseado no CONTEÚDO ATUAL abaixo, aplique a seguinte INSTRUÇÃO e retorne o arquivo COMPLETO.\n\nINSTRUÇÃO:\n${instruction}\n\nCONTEÚDO ATUAL:\n${originalContent}`;
-
+async function callLlama(prompt, systemMessage, env) {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "llama3-70b-8192",
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }]
+      messages: [{ role: "system", content: systemMessage }, { role: "user", content: prompt }]
     })
   });
   if (!response.ok) throw new Error(`Erro na API do Llama: ${await response.text()}`);
@@ -75,32 +63,35 @@ async function handleUpdate(message, env) {
 
   try {
     if (userText.startsWith("/edite ")) {
-      await sendMessage(chatId, "Diretiva de EDIÇÃO recebida. Acionando Engenheiro de Software...", env);
+      await sendMessage(chatId, "Diretiva de EDIÇÃO recebida...", env);
       const [_, filePath, ...instructionParts] = userText.split(" ");
       const instruction = instructionParts.join(" ");
-      if (!filePath || !instruction) throw new Error("Uso correto: /edite <caminho_do_arquivo> <instrução>");
+      if (!filePath || !instruction) throw new Error("Uso: /edite <caminho_do_arquivo> <instrução>");
       
       const { content: originalContent, sha } = await getFileContent(env.GITHUB_REPO_URL, filePath, env.GITHUB_TOKEN);
-      const newContent = await generateNewContentWithLlama(instruction, originalContent, env);
+      const systemPromptForEdit = `**PERSONA:** Você é um Engenheiro de Software Sênior. Sua única função é receber um CONTEÚDO ATUAL e uma INSTRUÇÃO, e retornar APENAS o conteúdo completo e modificado do arquivo. Sem explicações.`;
+      const newContent = await callLlama( `INSTRUÇÃO: ${instruction}\n\nCONTEÚDO ATUAL:\n${originalContent}`, systemPromptForEdit, env);
       await updateFile(env.GITHUB_REPO_URL, filePath, `Bot edit: ${instruction}`, newContent, sha, env.GITHUB_TOKEN);
       
       await sendMessage(chatId, `SUCESSO: O arquivo "${filePath}" foi modificado no GitHub.`, env);
 
     } else if (userText.startsWith("/crie ")) {
-      await sendMessage(chatId, "Diretiva de CRIAÇÃO recebida. Acionando Engenheiro de Software...", env);
+      await sendMessage(chatId, "Diretiva de CRIAÇÃO recebida...", env);
       const [_, filePath, ...instructionParts] = userText.split(" ");
       const instruction = instructionParts.join(" ");
-      if (!filePath || !instruction) throw new Error("Uso correto: /crie <caminho_do_arquivo> <descrição do conteúdo>");
+      if (!filePath || !instruction) throw new Error("Uso: /crie <caminho_do_arquivo> <descrição do conteúdo>");
 
-      const newContent = await generateNewContentWithLlama(instruction, "", env); // Conteúdo original é vazio
+      const systemPromptForCreate = `**PERSONA:** Você é um Engenheiro de Software Sênior. Sua única função é receber uma INSTRUÇÃO e gerar o conteúdo inicial para um novo arquivo. Retorne APENAS o código/texto. Sem explicações.`;
+      const newContent = await callLlama(instruction, systemPromptForCreate, env);
       await createFile(env.GITHUB_REPO_URL, filePath, `Bot create: ${filePath}`, newContent, env.GITHUB_TOKEN);
 
       await sendMessage(chatId, `SUCESSO: O arquivo "${filePath}" foi criado no GitHub.`, env);
 
     } else {
-      // Para qualquer outra mensagem, apenas confirme o recebimento.
-      // Aqui podemos adicionar a lógica de chamar o Gemini para conversas no futuro.
-      await sendMessage(chatId, `Comando não reconhecido. Comandos disponíveis: /edite e /crie.`, env);
+      // --- LÓGICA DE CONVERSA NORMAL ---
+      const systemPromptForChat = "Você é Jump.ai, um assistente de IA prestativo e direto. Responda de forma concisa.";
+      const chatResponse = await callLlama(userText, systemPromptForChat, env);
+      await sendMessage(chatId, chatResponse, env);
     }
   } catch (e) {
     console.error(e);
