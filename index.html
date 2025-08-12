@@ -207,8 +207,7 @@
             <p>Seu Assistente Pessoal de IA</p>
         </div>
         <div class="chat-messages" id="chat-messages">
-             <div class="message system">O chat está pronto. Faça uma pergunta para começar.</div>
-        </div>
+             </div>
         <div class="chat-input">
             <input type="text" id="message-input" placeholder="Digite sua mensagem aqui..." disabled>
             <button id="send-button" disabled>Enviar</button>
@@ -216,16 +215,17 @@
     </div>
 
     <script>
-        // MUDANÇA 2: Envolvemos todo o código para esperar a página carregar
+        // Espera o HTML inteiro ser carregado antes de executar o script
         document.addEventListener("DOMContentLoaded", () => {
-            // Elementos da DOM
+            
+            // O código só roda a partir daqui, garantindo que os botões já existem.
+            
             const loginOverlay = document.getElementById("login-overlay");
             const loginButton = document.getElementById("login-button");
             const chatMessages = document.getElementById("chat-messages");
             const messageInput = document.getElementById("message-input");
             const sendButton = document.getElementById("send-button");
 
-            // Função para adicionar mensagem na tela
             function addMessage(text, sender) {
                 const messageElement = document.createElement("div");
                 messageElement.classList.add("message", sender);
@@ -234,7 +234,6 @@
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
             
-            // Função para mostrar o indicador de "digitando"
             function showTypingIndicator() {
                 const typingElement = document.createElement("div");
                 typingElement.classList.add("message", "ai", "typing-indicator");
@@ -244,7 +243,6 @@
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
             
-            // Função para remover o indicador
             function hideTypingIndicator() {
                 const typingElement = document.getElementById("typing");
                 if(typingElement) {
@@ -252,7 +250,6 @@
                 }
             }
             
-            // Função para ativar o chat após o login
             function activateChat() {
                 loginOverlay.style.display = "none";
                 messageInput.disabled = false;
@@ -260,21 +257,18 @@
                 addMessage("Login bem-sucedido! O GPT está online.", "system");
             }
 
-            // Verifica se o usuário já está logado
             puter.auth.isLoggedIn().then(isLoggedIn => {
                 if (isLoggedIn) {
                     activateChat();
                 }
             });
 
-            // Lógica do botão de Login
             loginButton.addEventListener("click", () => {
                 puter.auth.login().then(() => {
                     activateChat();
                 });
             });
 
-            // Lógica principal do envio de mensagem
             async function handleSendMessage() {
                 const userText = messageInput.value.trim();
                 if (!userText) return;
@@ -297,10 +291,9 @@
                 }
             }
             
-            // Event listeners para o input e botão de envio
             sendButton.addEventListener("click", handleSendMessage);
             messageInput.addEventListener("keypress", (event) => {
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !sendButton.disabled) {
                     handleSendMessage();
                 }
             });
