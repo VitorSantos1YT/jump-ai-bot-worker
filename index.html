@@ -57,40 +57,48 @@
             }
 
             waitForPuter((puter) => {
+                let isChatActive = false;
+
                 function activateChat() {
+                    if (isChatActive) return; // Impede que a função rode várias vezes
+                    isChatActive = true;
+                    
                     loginOverlay.style.opacity = '0';
-                    setTimeout(() => { loginOverlay.style.display = 'none'; }, 500); // Esconde a tela de login
+                    setTimeout(() => { loginOverlay.style.display = 'none'; }, 500);
                     
                     messageInput.disabled = false;
                     messageInput.placeholder = "Converse com a IA...";
                     sendButton.disabled = false;
                     
-                    const welcomeMessage = document.querySelector('.message.system');
-                    if(!welcomeMessage){
-                        addMessage("Login bem-sucedido! A IA está online.", "system");
-                    }
+                    addMessage("Login bem-sucedido! A IA está online.", "system");
                 }
-                
-                async function handleSendMessage() { /* ...código da função... */ }
-                function addMessage(text, sender) { /* ...código da função... */ }
 
-                // --- INÍCIO DA ARQUITETURA FINAL ---
+                // --- INÍCIO DA ARQUITETURA DO "VIGIA" ---
 
-                // 1. O "OUVINTE": Fica esperando o sinal de login completo
-                puter.auth.onSignIn(activateChat);
-
-                // 2. O "BOTÃO": Sempre pronto para iniciar o processo
+                // O botão de login está sempre ativo para o primeiro clique.
                 loginButton.addEventListener("click", () => {
                     puter.auth.signIn();
                 });
 
-                // 3. A "VERIFICAÇÃO INICIAL": Para o caso de o usuário já voltar logado
-                if (puter.auth.isSignedIn()) {
-                    activateChat();
-                }
+                // O "Vigia" que checa o status do login por 5 segundos.
+                let checks = 0;
+                const maxChecks = 50; // 50 * 100ms = 5 segundos
+                const loginWatcher = setInterval(() => {
+                    if (puter.auth.isSignedIn()) {
+                        activateChat();
+                        clearInterval(loginWatcher);
+                    }
+                    checks++;
+                    if (checks >= maxChecks) {
+                        clearInterval(loginWatcher); // Desiste depois de 5 segundos
+                    }
+                }, 100);
 
-                // --- FIM DA ARQUITETURA FINAL ---
+                // --- FIM DA ARQUITETURA DO "VIGIA" ---
                 
+                function addMessage(text, sender) { /* ...código da função... */ }
+                async function handleSendMessage() { /* ...código da função... */ }
+
                 // Funções completas
                 function addMessage(text, sender) {
                     const messageElement = document.createElement('div');
