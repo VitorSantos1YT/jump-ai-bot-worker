@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jump.ai | Playground de IA</title>
-    <script src="https://js.puter.com/v2/"></script>
+    <script src="https://js.puter.com/v2/" defer></script>
     <style>
         @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap");
 
@@ -216,94 +216,95 @@
     </div>
 
     <script>
-        // Elementos da DOM (VERSÃO CORRIGIDA SEM ASPAS EXTRAS)
-        const loginOverlay = document.getElementById("login-overlay");
-        const loginButton = document.getElementById("login-button");
-        const chatMessages = document.getElementById("chat-messages");
-        const messageInput = document.getElementById("message-input");
-        const sendButton = document.getElementById("send-button");
+        // MUDANÇA 2: Envolvemos todo o código para esperar a página carregar
+        document.addEventListener("DOMContentLoaded", () => {
+            // Elementos da DOM
+            const loginOverlay = document.getElementById("login-overlay");
+            const loginButton = document.getElementById("login-button");
+            const chatMessages = document.getElementById("chat-messages");
+            const messageInput = document.getElementById("message-input");
+            const sendButton = document.getElementById("send-button");
 
-        // Função para adicionar mensagem na tela
-        function addMessage(text, sender) {
-            const messageElement = document.createElement("div");
-            messageElement.classList.add("message", sender);
-            messageElement.innerText = text;
-            chatMessages.appendChild(messageElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll
-        }
-        
-        // Função para mostrar o indicador de "digitando"
-        function showTypingIndicator() {
-            const typingElement = document.createElement("div");
-            typingElement.classList.add("message", "ai", "typing-indicator");
-            typingElement.id = "typing";
-            typingElement.innerHTML = "<span></span><span></span><span></span>";
-            chatMessages.appendChild(typingElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-        
-        // Função para remover o indicador
-        function hideTypingIndicator() {
-            const typingElement = document.getElementById("typing");
-            if(typingElement) {
-                typingElement.remove();
+            // Função para adicionar mensagem na tela
+            function addMessage(text, sender) {
+                const messageElement = document.createElement("div");
+                messageElement.classList.add("message", sender);
+                messageElement.innerText = text;
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             }
-        }
-        
-        // Função para ativar o chat após o login
-        function activateChat() {
-            loginOverlay.style.display = "none";
-            messageInput.disabled = false;
-            sendButton.disabled = false;
-            addMessage("Login bem-sucedido! O GPT está online.", "system");
-        }
-
-        // Verifica se o usuário já está logado
-        puter.auth.isLoggedIn().then(isLoggedIn => {
-            if (isLoggedIn) {
-                activateChat();
+            
+            // Função para mostrar o indicador de "digitando"
+            function showTypingIndicator() {
+                const typingElement = document.createElement("div");
+                typingElement.classList.add("message", "ai", "typing-indicator");
+                typingElement.id = "typing";
+                typingElement.innerHTML = "<span></span><span></span><span></span>";
+                chatMessages.appendChild(typingElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             }
-        });
+            
+            // Função para remover o indicador
+            function hideTypingIndicator() {
+                const typingElement = document.getElementById("typing");
+                if(typingElement) {
+                    typingElement.remove();
+                }
+            }
+            
+            // Função para ativar o chat após o login
+            function activateChat() {
+                loginOverlay.style.display = "none";
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                addMessage("Login bem-sucedido! O GPT está online.", "system");
+            }
 
-        // Lógica do botão de Login
-        loginButton.addEventListener("click", () => {
-            puter.auth.login().then(() => {
-                activateChat();
+            // Verifica se o usuário já está logado
+            puter.auth.isLoggedIn().then(isLoggedIn => {
+                if (isLoggedIn) {
+                    activateChat();
+                }
+            });
+
+            // Lógica do botão de Login
+            loginButton.addEventListener("click", () => {
+                puter.auth.login().then(() => {
+                    activateChat();
+                });
+            });
+
+            // Lógica principal do envio de mensagem
+            async function handleSendMessage() {
+                const userText = messageInput.value.trim();
+                if (!userText) return;
+
+                addMessage(userText, "user");
+                messageInput.value = "";
+                sendButton.disabled = true;
+                showTypingIndicator();
+
+                try {
+                    const response = await puter.ai.chat(userText, { model: "gpt-4o-mini" });
+                    hideTypingIndicator();
+                    addMessage(response, "ai");
+                } catch (error) {
+                    hideTypingIndicator();
+                    addMessage("Ocorreu um erro ao contatar a IA: " + error.message, "system");
+                    console.error("Erro na chamada da IA:", error);
+                } finally {
+                     sendButton.disabled = false;
+                }
+            }
+            
+            // Event listeners para o input e botão de envio
+            sendButton.addEventListener("click", handleSendMessage);
+            messageInput.addEventListener("keypress", (event) => {
+                if (event.key === "Enter") {
+                    handleSendMessage();
+                }
             });
         });
-
-        // Lógica principal do envio de mensagem
-        async function handleSendMessage() {
-            const userText = messageInput.value.trim();
-            if (!userText) return;
-
-            addMessage(userText, "user");
-            messageInput.value = "";
-            sendButton.disabled = true; // Desabilita o botão durante o processamento
-            showTypingIndicator();
-
-            try {
-                // Chama a IA do Puter.js (GPT-4o mini é um ótimo padrão)
-                const response = await puter.ai.chat(userText, { model: "gpt-4o-mini" });
-                hideTypingIndicator();
-                addMessage(response, "ai");
-            } catch (error) {
-                hideTypingIndicator();
-                addMessage("Ocorreu um erro ao contatar a IA: " + error.message, "system");
-                console.error("Erro na chamada da IA:", error);
-            } finally {
-                 sendButton.disabled = false; // Habilita o botão novamente
-            }
-        }
-        
-        // Event listeners para o input e botão de envio
-        sendButton.addEventListener("click", handleSendMessage);
-        messageInput.addEventListener("keypress", (event) => {
-            if (event.key === "Enter") {
-                handleSendMessage();
-            }
-        });
-
     </script>
 </body>
 </html>
