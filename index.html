@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump.ai | Debug Mode</title>
+    <title>Jump.ai | Playground</title>
     <script src="https://js.puter.com/v2/" defer></script>
     <style>
         :root { --bg-color: #121212; --surface-color: #1e1e1e; --primary-color: #8A2BE2; --accent-color: #00FFFF; --text-color: #E0E0E0; --text-muted: #A0A0A0; --border-color: #333; }
@@ -22,33 +22,9 @@
         #send-button:disabled { background-color: #555; cursor: not-allowed; }
         #login-overlay { position: absolute; inset: 0; background-color: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px); z-index: 10; }
         #login-button { padding: 15px 30px; font-size: 1.2em; background-color: var(--accent-color); color: var(--bg-color); border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
-
-        /* ESTILO DO DEBUG CONSOLE REATIVADO */
-        #debug-console {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 200px;
-            background-color: rgba(0, 0, 0, 0.9);
-            border-top: 2px solid var(--accent-color);
-            color: #fff;
-            font-family: monospace;
-            font-size: 12px;
-            padding: 10px;
-            overflow-y: scroll;
-            box-sizing: border-box;
-            z-index: 9999;
-        }
-        .debug-log { margin: 0; padding: 2px 0; border-bottom: 1px solid #444; }
-        .debug-error { color: #FF6B6B; font-weight: bold; }
-        .debug-success { color: #50fa7b; }
     </style>
 </head>
 <body>
-    <div id="debug-console">
-        <p class="debug-log">Iniciando console de depuração na página...</p>
-    </div>
     <div class="chat-container">
         <div id="login-overlay">
              <h2>Bem-vindo ao Jump.ai</h2>
@@ -64,22 +40,7 @@
     </div>
 
     <script>
-        const debugConsole = document.getElementById('debug-console');
-        function logToScreen(message, type = 'log') {
-            const p = document.createElement('p');
-            p.textContent = `[${type.toUpperCase()}] ${message}`;
-            if (type === 'error') p.className = 'debug-error';
-            if (type === 'success') p.className = 'debug-success';
-            if (type === 'log') p.className = 'debug-log';
-            debugConsole.appendChild(p);
-            debugConsole.scrollTop = debugConsole.scrollHeight;
-        }
-        const originalLog = console.log; console.log = function(message) { logToScreen(message, 'log'); originalLog.apply(console, arguments); };
-        const originalError = console.error; console.error = function(message) { logToScreen(message, 'error'); originalError.apply(console, arguments); };
-        window.onerror = function(message, source, lineno, colno, error) { logToScreen(`ERRO NÃO TRATADO: ${message}`, 'error'); return true; };
-
         document.addEventListener("DOMContentLoaded", () => {
-            console.log("DOM carregado. Iniciando script principal.");
             const loginOverlay = document.getElementById("login-overlay");
             const loginButton = document.getElementById("login-button");
             const chatMessages = document.getElementById("chat-messages");
@@ -87,10 +48,8 @@
             const sendButton = document.getElementById("send-button");
 
             function waitForPuter(callback) {
-                console.log("Procurando por Puter.js...");
                 const interval = setInterval(() => {
                     if (window.puter) {
-                        console.log("Puter.js encontrado!", 'success');
                         clearInterval(interval);
                         callback(window.puter);
                     }
@@ -98,6 +57,32 @@
             }
 
             waitForPuter((puter) => {
+                function addMessage(text, sender) { /* ...código da função... */ }
+                function activateChat() { /* ...código da função... */ }
+                async function handleSendMessage() { /* ...código da função... */ }
+
+                // --- INÍCIO DA CORREÇÃO ---
+                try {
+                    // Chamada SÍNCRONA, sem .then()
+                    const isLoggedIn = puter.auth.isSignedIn();
+
+                    if (isLoggedIn) {
+                        // Se for true, ativa o chat imediatamente.
+                        activateChat();
+                    } else {
+                        // Se for false, ativa o botão de login.
+                        loginButton.addEventListener("click", () => {
+                            // A função signIn também não precisa de .then,
+                            // pois ela redireciona a página inteira.
+                            puter.auth.signIn();
+                        });
+                    }
+                } catch (e) {
+                    alert('Erro crítico na autenticação: ' + e.message);
+                }
+                // --- FIM DA CORREÇÃO ---
+                
+                // Funções completas para referência
                 function addMessage(text, sender) {
                     const messageElement = document.createElement('div');
                     messageElement.classList.add('message', sender);
@@ -106,7 +91,6 @@
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                 }
                 function activateChat() {
-                    console.log("Ativando interface do chat...");
                     loginOverlay.style.display = "none";
                     messageInput.disabled = false;
                     messageInput.placeholder = "Converse com a IA...";
@@ -128,20 +112,6 @@
                         sendButton.disabled = false;
                     }
                 }
-
-                console.log("Verificando se usuário já está logado...");
-                puter.auth.isSignedIn().then(isLoggedIn => {
-                    if (isLoggedIn) {
-                        console.log("Usuário já está logado.", 'success');
-                        activateChat();
-                    } else {
-                        console.log("Usuário não está logado. Anexando evento ao botão.");
-                        loginButton.addEventListener("click", () => {
-                            console.log("Botão de login clicado.");
-                            puter.auth.signIn().catch(err => console.error("Erro no processo de login: " + err.message));
-                        });
-                    }
-                }).catch(err => console.error("Erro ao verificar 'isSignedIn': " + err.message));
                 
                 sendButton.addEventListener("click", handleSendMessage);
                 messageInput.addEventListener("keypress", (e) => {
