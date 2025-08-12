@@ -88,12 +88,12 @@
                     messageInput.value = "";
                     sendButton.disabled = true;
                     try {
-                        const response = await puter.ai.chat([{ role: 'user', content: userText }], { model: "gpt-4o-mini" });
+                        // --- AQUI ESTÁ A CORREÇÃO ---
+                        // Removemos a opção de modelo para usar o padrão gratuito.
+                        const response = await puter.ai.chat([{ role: 'user', content: userText }]);
                         addMessage(response.content, "ai");
                     } catch (error) {
-                        // --- AQUI ESTÁ A MUDANÇA ---
-                        // Mostra o objeto de erro inteiro para descobrirmos a causa.
-                        addMessage("Erro ao contatar a IA: " + JSON.stringify(error, null, 2), "system");
+                        addMessage("Ocorreu um erro ao contatar a IA. Tente novamente.", "system");
                     } finally {
                         sendButton.disabled = false;
                     }
