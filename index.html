@@ -20,7 +20,7 @@
         #message-input { flex-grow: 1; padding: 12px; background-color: #2c2c2c; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-color); font-size: 1em; }
         #send-button { padding: 12px 20px; background-color: var(--primary-color); border: none; border-radius: 8px; color: white; font-size: 1em; font-weight: 500; cursor: pointer; }
         #send-button:disabled { background-color: #555; cursor: not-allowed; }
-        #login-overlay { position: absolute; inset: 0; background-color: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px); z-index: 10; }
+        #login-overlay { position: absolute; inset: 0; background-color: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px); z-index: 10; transition: opacity 0.5s ease; }
         #login-button { padding: 15px 30px; font-size: 1.2em; background-color: var(--accent-color); color: var(--bg-color); border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
     </style>
 </head>
@@ -57,45 +57,47 @@
             }
 
             waitForPuter((puter) => {
-                function addMessage(text, sender) { /* ...código da função... */ }
-                function activateChat() { /* ...código da função... */ }
-                async function handleSendMessage() { /* ...código da função... */ }
-
-                // --- INÍCIO DA CORREÇÃO ---
-                try {
-                    // Chamada SÍNCRONA, sem .then()
-                    const isLoggedIn = puter.auth.isSignedIn();
-
-                    if (isLoggedIn) {
-                        // Se for true, ativa o chat imediatamente.
-                        activateChat();
-                    } else {
-                        // Se for false, ativa o botão de login.
-                        loginButton.addEventListener("click", () => {
-                            // A função signIn também não precisa de .then,
-                            // pois ela redireciona a página inteira.
-                            puter.auth.signIn();
-                        });
+                function activateChat() {
+                    loginOverlay.style.opacity = '0';
+                    setTimeout(() => { loginOverlay.style.display = 'none'; }, 500); // Esconde a tela de login
+                    
+                    messageInput.disabled = false;
+                    messageInput.placeholder = "Converse com a IA...";
+                    sendButton.disabled = false;
+                    
+                    const welcomeMessage = document.querySelector('.message.system');
+                    if(!welcomeMessage){
+                        addMessage("Login bem-sucedido! A IA está online.", "system");
                     }
-                } catch (e) {
-                    alert('Erro crítico na autenticação: ' + e.message);
                 }
-                // --- FIM DA CORREÇÃO ---
                 
-                // Funções completas para referência
+                async function handleSendMessage() { /* ...código da função... */ }
+                function addMessage(text, sender) { /* ...código da função... */ }
+
+                // --- INÍCIO DA ARQUITETURA FINAL ---
+
+                // 1. O "OUVINTE": Fica esperando o sinal de login completo
+                puter.auth.onSignIn(activateChat);
+
+                // 2. O "BOTÃO": Sempre pronto para iniciar o processo
+                loginButton.addEventListener("click", () => {
+                    puter.auth.signIn();
+                });
+
+                // 3. A "VERIFICAÇÃO INICIAL": Para o caso de o usuário já voltar logado
+                if (puter.auth.isSignedIn()) {
+                    activateChat();
+                }
+
+                // --- FIM DA ARQUITETURA FINAL ---
+                
+                // Funções completas
                 function addMessage(text, sender) {
                     const messageElement = document.createElement('div');
                     messageElement.classList.add('message', sender);
                     messageElement.textContent = text;
                     chatMessages.appendChild(messageElement);
                     chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-                function activateChat() {
-                    loginOverlay.style.display = "none";
-                    messageInput.disabled = false;
-                    messageInput.placeholder = "Converse com a IA...";
-                    sendButton.disabled = false;
-                    addMessage("Login bem-sucedido! A IA está online.", "system");
                 }
                 async function handleSendMessage() {
                     const userText = messageInput.value.trim();
