@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jump.ai | Playground de IA</title>
+    <script src="https://js.puter.com/v2/"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #8A2BE2; /* Roxo */
+            --accent-color: #00FFFF;  /* Ciano Neon */
+            --text-color: #E0E0E0;
+            --text-muted: #A0A0A0;
+            --border-color: #333;
+        }
+
+        body {
+            font-family: Inter, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 700px;
+            height: 85vh;
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .chat-header {
+            padding: 20px;
+            background-color: rgba(0,0,0,0.2);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .chat-header h1 {
+            margin: 0;
+            font-size: 1.5em;
+            text-align: center;
+        }
+        
+        .chat-header h1 span {
+            color: var(--accent-color);
+            font-weight: 700;
+        }
+        
+        .chat-header p {
+            margin: 5px 0 0;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background-color: var(--primary-color);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.ai {
+            background-color: #2c2c2c;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message.system {
+             background-color: transparent;
+             color: var(--text-muted);
+             align-self: center;
+             font-style: italic;
+             font-size: 0.9em;
+             text-align: center;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 12px 18px;
+        }
+        
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        .chat-input {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex-grow: 1;
+            padding: 12px;
+            background-color: #2c2c2c;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        #message-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        #send-button {
+            padding: 12px 20px;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #send-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        #login-overlay {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+        }
+        
+        #login-button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div id="login-overlay">
+             <h2>Bem-vindo ao Jump.ai</h2>
+             <p>Faça login para ativar o Playground de IA</p>
+             <button id="login-button">Login com Puter</button>
+        </div>
+
+        <div class="chat-header">
+            <h1>Jump <span>AI</span></h1>
+            <p>Seu Assistente Pessoal de IA</p>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+             <div class="message system">O chat está pronto. Faça uma pergunta para começar.</div>
+        </div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Digite sua mensagem aqui..." disabled>
+            <button id="send-button" disabled>Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        // Elementos da DOM
+        const loginOverlay = document.getElementById('login-overlay');
+        const loginButton = document.getElementById('login-button');
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+
+        // Função para adicionar mensagem na tela
+        function addMessage(text, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', sender);
+            messageElement.innerText = text;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll
+        }
+        
+        // Função para mostrar o indicador de "digitando"
+        function showTypingIndicator() {
+            const typingElement = document.createElement('div');
+            typingElement.classList.add('message', 'ai', 'typing-indicator');
+            typingElement.id = 'typing';
+            typingElement.innerHTML = '<span></span><span></span><span></span>';
+            chatMessages.appendChild(typingElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Função para remover o indicador
+        function hideTypingIndicator() {
+            const typingElement = document.getElementById('typing');
+            if(typingElement) {
+                typingElement.remove();
+            }
+        }
+        
+        // Função para ativar o chat após o login
+        function activateChat() {
+            loginOverlay.style.display = 'none';
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            addMessage('Login bem-sucedido! O GPT está online.', 'system');
+        }
+
+        // Verifica se o usuário já está logado
+        puter.auth.isLoggedIn().then(isLoggedIn => {
+            if (isLoggedIn) {
+                activateChat();
+            }
+        });
+
+        // Lógica do botão de Login
+        loginButton.addEventListener('click', () => {
+            puter.auth.login().then(() => {
+                activateChat();
+            });
+        });
+
+        // Lógica principal do envio de mensagem
+        async function handleSendMessage() {
+            const userText = messageInput.value.trim();
+            if (!userText) return;
+
+            addMessage(userText, 'user');
+            messageInput.value = ' ';
+            sendButton.disabled = true; // Desabilita o botão durante o processamento
+            showTypingIndicator();
+
+            try {
+                // Chama a IA do Puter.js (GPT-4o mini é um ótimo padrão)
+                const response = await puter.ai.chat(userText, { model: 'gpt-4o-mini' });
+                hideTypingIndicator();
+                addMessage(response, 'ai');
+            } catch (error) {
+                hideTypingIndicator();
+                addMessage('Ocorreu um erro ao contatar a IA: ' + error.message, 'system');
+                console.error('Erro na chamada da IA:', error);
+            } finally {
+                 sendButton.disabled = false; // Habilita o botão novamente
+            }
+        }
+        
+        // Event listeners para o input e botão de envio
+        sendButton.addEventListener('click', handleSendMessage);
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+
+    </script>
+</body>
+</html>
