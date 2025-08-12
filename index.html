@@ -88,12 +88,14 @@
                     messageInput.value = "";
                     sendButton.disabled = true;
                     try {
-                        // --- AQUI ESTÁ A CORREÇÃO ---
-                        // Removemos a opção de modelo para usar o padrão gratuito.
-                        const response = await puter.ai.chat([{ role: 'user', content: userText }]);
-                        addMessage(response.content, "ai");
+                        // --- AQUI ESTÁ A MUDANÇA ---
+                        // 1. Enviamos apenas o texto simples
+                        const response = await puter.ai.chat(userText);
+                        // 2. Assumimos que a resposta é o texto simples
+                        addMessage(response, "ai");
                     } catch (error) {
-                        addMessage("Ocorreu um erro ao contatar a IA. Tente novamente.", "system");
+                        // 3. Reativamos o log de erro detalhado
+                        addMessage("Erro ao contatar a IA: " + JSON.stringify(error, null, 2), "system");
                     } finally {
                         sendButton.disabled = false;
                     }
