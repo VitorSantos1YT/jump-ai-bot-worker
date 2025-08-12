@@ -3,57 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump.ai | Playground com Puter.js</title>
+    <title>Jump.ai | Debug Mode</title>
     <script src="https://js.puter.com/v2/" defer></script>
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap");
         :root { --bg-color: #121212; --surface-color: #1e1e1e; --primary-color: #8A2BE2; --accent-color: #00FFFF; --text-color: #E0E0E0; --text-muted: #A0A0A0; --border-color: #333; }
-        body { font-family: "Inter", sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
-        .chat-container { width: 100%; max-width: 700px; height: 85vh; background-color: var(--surface-color); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-color); }
-        .chat-header { padding: 20px; background-color: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border-color); text-align: center; }
-        .chat-header h1 { margin: 0; font-size: 1.5em; } .chat-header h1 span { color: var(--accent-color); font-weight: 700; }
-        .chat-messages { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-        .message { max-width: 80%; padding: 12px 18px; border-radius: 18px; line-height: 1.5; word-wrap: break-word; }
-        .message.user { background-color: var(--primary-color); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .message.ai { background-color: #2c2c2c; align-self: flex-start; border-bottom-left-radius: 4px; }
-        .message.system { background-color: transparent; color: var(--text-muted); align-self: center; font-style: italic; font-size: 0.9em; text-align: center; }
-        .chat-input { padding: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; }
-        #message-input { flex-grow: 1; padding: 12px; background-color: #2c2c2c; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-color); font-size: 1em; }
-        #send-button:disabled { background-color: #555; cursor: not-allowed; }
+        body { font-family: "Inter", sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding-bottom: 220px; /* Espaço para o console de debug */ }
+        .chat-container { width: 100%; max-width: 700px; height: 85vh; background-color: var(--surface-color); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-color); margin: 20px; }
+        .chat-header h1 span { color: var(--accent-color); }
         #login-overlay { position: absolute; inset: 0; background-color: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px); z-index: 10; }
         #login-button { padding: 15px 30px; font-size: 1.2em; background-color: var(--accent-color); color: var(--bg-color); border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
+        
+        /* ESTILOS DO CONSOLE DE DEBUG */
+        #debug-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            background-color: rgba(0, 0, 0, 0.9);
+            border-top: 2px solid var(--accent-color);
+            color: #fff;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            overflow-y: scroll;
+            box-sizing: border-box;
+            z-index: 9999;
+        }
+        .debug-log { margin: 0; padding: 2px 0; border-bottom: 1px solid #444; }
+        .debug-error { color: #FF6B6B; font-weight: bold; }
+        .debug-success { color: #50fa7b; }
     </style>
 </head>
 <body>
+    <div id="debug-console">
+        <p class="debug-log">Iniciando console de depuração na página...</p>
+    </div>
+
     <div class="chat-container">
         <div id="login-overlay">
              <h2>Bem-vindo ao Jump.ai</h2>
              <p>Faça login para ativar o Playground de IA</p>
              <button id="login-button">Login com Puter</button>
         </div>
-        <div class="chat-header"><h1>Jump <span>AI</span></h1></div>
-        <div class="chat-messages" id="chat-messages"></div>
-        <div class="chat-input">
-            <input type="text" id="message-input" placeholder="Aguardando login..." disabled>
-            <button id="send-button" disabled>Enviar</button>
         </div>
-    </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            console.log("DOM carregado. Iniciando script do chat.");
-            const loginOverlay = document.getElementById("login-overlay");
-            const loginButton = document.getElementById("login-button");
-            const chatMessages = document.getElementById("chat-messages");
-            const messageInput = document.getElementById("message-input");
-            const sendButton = document.getElementById("send-button");
+        // --- SCRIPT DE DEPURAÇÃO ON-PAGE ---
+        const debugConsole = document.getElementById('debug-console');
 
+        function logToScreen(message, type = 'log') {
+            const p = document.createElement('p');
+            p.textContent = `[${type.toUpperCase()}] ${message}`;
+            if (type === 'error') p.className = 'debug-error';
+            if (type === 'success') p.className = 'debug-success';
+            if (type === 'log') p.className = 'debug-log';
+            debugConsole.appendChild(p);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+        }
+
+        // Redireciona o console.log, console.error e erros globais para a tela
+        const originalLog = console.log;
+        console.log = function(message) {
+            logToScreen(message, 'log');
+            originalLog.apply(console, arguments);
+        };
+        
+        const originalError = console.error;
+        console.error = function(message) {
+            logToScreen(message, 'error');
+            originalError.apply(console, arguments);
+        };
+
+        window.onerror = function(message, source, lineno, colno, error) {
+            logToScreen(`ERRO NÃO TRATADO: ${message} em ${source}:${lineno}`, 'error');
+            return true;
+        };
+
+        // --- FIM DO SCRIPT DE DEPURAÇÃO ---
+
+
+        // --- NOSSO CÓDIGO ORIGINAL DO CHAT ---
+        document.addEventListener("DOMContentLoaded", () => {
+            console.log("DOM carregado. Iniciando script principal do chat.");
+            const loginButton = document.getElementById("login-button");
+            
             function waitForPuter(callback) {
                 let checks = 0;
                 const maxChecks = 100;
+                console.log("Iniciando 'waitForPuter'. Procurando pelo objeto window.puter...");
                 const interval = setInterval(() => {
                     if (window.puter) {
-                        console.log("SUCESSO: Puter.js foi encontrado!");
+                        console.log("Puter.js foi encontrado!", 'success');
                         clearInterval(interval);
                         callback(window.puter);
                     } else {
@@ -61,64 +102,20 @@
                         if (checks >= maxChecks) {
                             clearInterval(interval);
                             console.error("FALHA CRÍTICA: Puter.js não carregou em 10 segundos.");
-                            alert("ERRO: A biblioteca principal (Puter.js) não pôde ser carregada.");
                         }
                     }
                 }, 100);
             }
 
             waitForPuter((puter) => {
-                function addMessage(text, sender) {
-                    const messageElement = document.createElement('div');
-                    messageElement.classList.add('message', sender);
-                    messageElement.textContent = text;
-                    chatMessages.appendChild(messageElement);
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-
-                function activateChat() {
-                    loginOverlay.style.display = "none";
-                    messageInput.disabled = false;
-                    messageInput.placeholder = "Converse com a IA...";
-                    sendButton.disabled = false;
-                    addMessage("Login bem-sucedido! A IA está online.", "system");
-                }
-
-                puter.auth.isSignedIn().then(isLoggedIn => {
-                    console.log("Verificando status do login...", { isLoggedIn });
-                    if (isLoggedIn) activateChat();
-                }).catch(err => alert("Erro ao verificar o login: " + err.message));
-
+                console.log("Puter está pronto. Anexando evento de clique ao botão de login.");
                 loginButton.addEventListener("click", () => {
-                    console.log("Botão de login clicado. Iniciando puter.auth.signIn()...");
-                    puter.auth.signIn().then(() => {
-                        console.log("Login realizado com sucesso via popup.");
-                        activateChat();
-                    }).catch(err => alert("Erro no processo de login: " + err.message));
+                    console.log("Botão de login clicado. Chamando puter.auth.signIn()...");
+                    puter.auth.signIn().catch(err => {
+                        console.error("Erro DENTRO do processo de login: " + err.message);
+                    });
                 });
-
-                async function handleSendMessage() {
-                    const userText = messageInput.value.trim();
-                    if (!userText) return;
-                    addMessage(userText, "user");
-                    messageInput.value = "";
-                    sendButton.disabled = true;
-                    try {
-                        console.log(`Enviando para a IA: "${userText}"`);
-                        const response = await puter.ai.chat([{ role: 'user', content: userText }], { model: "gpt-4o-mini" });
-                        addMessage(response.content, "ai");
-                    } catch (error) {
-                        console.error("Erro ao chamar a IA:", error);
-                        addMessage("Erro ao contatar a IA: " + error.message, "system");
-                    } finally {
-                        sendButton.disabled = false;
-                    }
-                }
-                
-                sendButton.addEventListener("click", handleSendMessage);
-                messageInput.addEventListener("keypress", (e) => {
-                    if (e.key === "Enter" && !sendButton.disabled) handleSendMessage();
-                });
+                console.log("Tudo pronto. Aguardando clique no botão de login.");
             });
         });
     </script>
