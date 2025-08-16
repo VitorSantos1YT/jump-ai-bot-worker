@@ -27,6 +27,9 @@ async function callOpenRouter(modelId, prompt, env) {
       throw new Error(`Erro na API do OpenRouter para o modelo ${modelId}: ${errorText}`);
     }
     const data = await response.json();
+    if (!data.choices || data.choices.length === 0 || !data.choices[0].message || !data.choices[0].message.content) {
+      throw new Error(`A API retornou uma resposta vazia ou malformada para o modelo ${modelId}.`);
+    }
     return data.choices[0].message.content;
   } catch (error) {
     clearTimeout(timeoutId);
@@ -61,6 +64,10 @@ async function handleTelegramUpdate(message, env) {
       modelId = "qwen/qwen-2.5-72b-instruct:free"; 
       modelName = "Qwen 2.5 72B";
       prompt = userText.substring(6).trim();
+    } else if (userText.trim() === "/ping") {
+      modelId = "z-ai/glm-4.5-air:free";
+      modelName = "GLM 4.5 Air (Teste de Ping)";
+      prompt = "Responda apenas com a palavra: ok";
     }
 
     if (prompt) {
@@ -68,7 +75,7 @@ async function handleTelegramUpdate(message, env) {
       const reply = await callOpenRouter(modelId, prompt, env);
       await sendMessage(chatId, `**${modelName} respondeu:**\n\n${reply}`, env);
     } else {
-      await sendMessage(chatId, "Comando não reconhecido ou sem pergunta. Use /chimera, /glm ou /qwen seguido da sua pergunta.", env);
+      await sendMessage(chatId, "Comando não reconhecido. Use /chimera, /glm, /qwen ou o teste /ping.", env);
     }
   } catch (e) {
     console.error(e);
