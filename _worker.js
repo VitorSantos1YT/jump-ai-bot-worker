@@ -29,9 +29,19 @@ async function callOpenRouter(modelId, prompt, env, options = {}) {
       const errorText = await response.text();
       throw new Error(`Erro na API do OpenRouter para o modelo ${modelId}: ${errorText}`);
     }
-    const data = await response.json();
+
+    // MODO DE DEPURAÇÃO ATIVADO
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      // Se .json() falhar, tenta ler como texto puro para depuração
+      const rawText = await response.text();
+      throw new Error(`Falha ao processar JSON da API. Resposta bruta recebida: ${rawText.substring(0, 500)}...`);
+    }
+
     if (!data.choices || data.choices.length === 0 || !data.choices[0].message || !data.choices[0].message.content) {
-      throw new Error(`A API retornou uma resposta vazia ou malformada para o modelo ${modelId}.`);
+      throw new Error(`A API retornou uma resposta JSON bem-sucedida, mas vazia ou malformada para o modelo ${modelId}.`);
     }
     return data.choices[0].message.content;
   } catch (error) {
@@ -78,7 +88,7 @@ async function handleTelegramUpdate(message, env) {
     if (prompt) {
       await sendMessage(chatId, `Recebido. Missão de alta complexidade atribuída ao **${modelName}**. Isso pode levar até 3 minutos...`, env);
       const reply = await callOpenRouter(modelId, prompt, env, options);
-      await sendMessage(chatId, `**${modelName} concluiu a missão:**\n\n${reply}`, env);
+      await sendMessage(chatId, `**${modelName} concluiu a missão:**\n\n\`\`\`\n${reply}\n\`\`\``, env);
     } else {
       await sendMessage(chatId, "Comando não reconhecido. Use **/chimera** (para código/lógica) ou **/qwen** (para ideias/consultoria) seguido da sua pergunta.", env);
     }
