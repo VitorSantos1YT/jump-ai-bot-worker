@@ -2,9 +2,15 @@
 // =========================================
 // FUNÇÃO DE CHAMADA PARA O OPENROUTER
 // =========================================
-async function callOpenRouter(modelId, prompt, env) {
+async function callOpenRouter(modelId, prompt, env, options = {}) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), 180000);
+
+  const body = {
+    model: modelId,
+    messages: [{ role: "user", content: prompt }],
+    ...options 
+  };
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -13,10 +19,7 @@ async function callOpenRouter(modelId, prompt, env) {
         "Authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        "model": modelId,
-        "messages": [{ "role": "user", "content": prompt }]
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
 
@@ -34,7 +37,7 @@ async function callOpenRouter(modelId, prompt, env) {
   } catch (error) {
     clearTimeout(timeoutId);
     if (error.name === "AbortError") {
-      return `O modelo ${modelId} demorou muito para responder (timeout de 30s). Tente novamente.`;
+      return `O modelo ${modelId} demorou muito para responder (timeout de 180s). Tente novamente.`;
     }
     throw error;
   }
@@ -50,32 +53,34 @@ async function handleTelegramUpdate(message, env) {
   let modelId = "";
   let modelName = "";
   let prompt = "";
+  let options = {};
 
   try {
     if (userText.startsWith("/chimera ")) {
       modelId = "tngtech/deepseek-r1t2-chimera:free";
-      modelName = "DeepSeek R1T2 Chimera";
+      modelName = "Engenheiro Preciso (Chimera)";
       prompt = userText.substring(9).trim();
-    } else if (userText.startsWith("/glm ")) {
-      modelId = "z-ai/glm-4.5-air:free";
-      modelName = "GLM 4.5 Air";
-      prompt = userText.substring(5).trim();
+      options = {
+        temperature: 0.2,
+        max_tokens: 8192,
+        frequency_penalty: 0.4
+      };
     } else if (userText.startsWith("/qwen ")) {
       modelId = "qwen/qwen-2.5-72b-instruct:free"; 
-      modelName = "Qwen 2.5 72B";
+      modelName = "Consultor Dinâmico (Qwen)";
       prompt = userText.substring(6).trim();
-    } else if (userText.trim() === "/ping") {
-      modelId = "z-ai/glm-4.5-air:free";
-      modelName = "GLM 4.5 Air (Teste de Ping)";
-      prompt = "Responda apenas com a palavra: ok";
+      options = {
+        temperature: 0.6,
+        max_tokens: 8192
+      };
     }
 
     if (prompt) {
-      await sendMessage(chatId, `Recebido. Consultando ${modelName} no OpenRouter...`, env);
-      const reply = await callOpenRouter(modelId, prompt, env);
-      await sendMessage(chatId, `**${modelName} respondeu:**\n\n${reply}`, env);
+      await sendMessage(chatId, `Recebido. Missão de alta complexidade atribuída ao **${modelName}**. Isso pode levar até 3 minutos...`, env);
+      const reply = await callOpenRouter(modelId, prompt, env, options);
+      await sendMessage(chatId, `**${modelName} concluiu a missão:**\n\n${reply}`, env);
     } else {
-      await sendMessage(chatId, "Comando não reconhecido. Use /chimera, /glm, /qwen ou o teste /ping.", env);
+      await sendMessage(chatId, "Comando não reconhecido. Use **/chimera** (para código/lógica) ou **/qwen** (para ideias/consultoria) seguido da sua pergunta.", env);
     }
   } catch (e) {
     console.error(e);
